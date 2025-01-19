@@ -98,9 +98,9 @@ describe('ProofOfCapital', () => {
         });
     }
 
-    // Ensures that the contract could be deployed
     it('should deploy', async () => {});
 
+    // Tests the conversion of TON to jetton amounts, ensuring bounds and edge cases.
     it("get ton_to_jetton_calculation", async () => {
       expect(await proofOfCapital.getTonToJettonCalculation(0n)).toEqual(0n)
       expect(await proofOfCapital.getTonToJettonCalculation(1n)).toEqual(66666n)
@@ -108,14 +108,16 @@ describe('ProofOfCapital', () => {
       expect(await proofOfCapital.getTonToJettonCalculation(3n)).toEqual(200000n)
       expect(await proofOfCapital.getTonToJettonCalculation(1000n)).toEqual(66666666n)
 
-      // FIXME: This input should be rejected (C1 vuln)
+      // TODO: This input should be rejected (C1 vuln)
       expect(await proofOfCapital.getTonToJettonCalculation(10000000n)).toEqual(JETTONS_BALANCE)
 
       expect(await proofOfCapital.getTonToJettonCalculation(-1n)).toEqual(0n)
       expect(await proofOfCapital.getTonToJettonCalculation(-1000000n)).toEqual(0n)
     });
 
-    // Property-based test to ensure non-negative output
+    // PBT: For any input amount of TON, the output jetton amount must be:
+    // 1. Non-negative
+    // 2. Not exceed total jetton balance
     it("get ton_to_jetton_calculation PBT", async () => {
       await fc.assert(
           fc.asyncProperty(
