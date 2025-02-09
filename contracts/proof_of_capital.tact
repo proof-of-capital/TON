@@ -22,8 +22,13 @@ import "@stdlib/ownable";
 import "./message";
 
 
-const JettonTransferGas: Int = ton("0.05");
-
+const TWO_YEARS: Int = 63_072_000;
+const HALF_YEAR: Int = 15_768_000;
+const SIXTY_DAYS: Int = 5_184_000;
+const THREE_MONTHS: Int = 7_776_000;
+const TEN_MINUTES: Int = 600;
+const FIVE_HUNDREDTHS_TON: Int = ton("0.05");
+const COMMISSION_MULTIPLIER: Int = 10;
 
 contract ProofOfCapital with Deployable, OwnableTransferable {
     id: Int as uint256;
@@ -36,23 +41,21 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
     initialPricePerToken: Int as coins;
     firstLevelJettonQuantity: Int as coins;
     priceIncrementMultiplier: Int as uint16;
+    commission: Int as coins;
 
     levelIncreaseMultiplier: Int as uint16;
     trendChangeStep: Int as uint8;
-    levelIncreaseMultiplierafterTrend: Int as uint16;
+    levelDecreaseMultiplierafterTrend: Int as uint16;
     profitPercentage: Int as uint16;
     queryId: Int as uint64;
     totalJettonsSold: Int as coins;
     contractTonBalance: Int as coins;
     contractJettonBalance: Int as coins;
-    tonBalanceRedemption: Int as coins;
     jettonsEarned: Int as coins;
 
-    commission: Int as coins;
     quantityJettonsPerLevel: Int as coins;
     actualProfit: Int as coins;
     currentPrice: Int as coins;
-    anotherTokenAmount:Int as coins;
     currentStep: Int as coins;
     remainderOfStep: Int as coins;
     currentStepEarned: Int as coins;
@@ -76,14 +79,14 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         priceIncrementMultiplier: Int,
         levelIncreaseMultiplier: Int,
         trendChangeStep: Int,
-        levelIncreaseMultiplierafterTrend: Int,
+        levelDecreaseMultiplierafterTrend: Int,
         profitPercentage: Int,
         ) {
         self.id = 0;
         self.owner = owner;
         self.marketMakerAddress = marketMakerAddress;
         self.jettonMasterAddress = jettonMasterAddress;
-        self.contractJettonWalletAddress = newAddress(0, 0);
+        self.contractJettonWalletAddress = owner;
         self.returnWalletAddress = returnWalletAddress;
         self.royaltyWalletAddress = royaltyWalletAddress;
         self.lockEndTime = lockEndTime;
@@ -92,28 +95,26 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         self.priceIncrementMultiplier = priceIncrementMultiplier;
         self.levelIncreaseMultiplier = levelIncreaseMultiplier;
         self.trendChangeStep = trendChangeStep;
-        self.levelIncreaseMultiplierafterTrend = levelIncreaseMultiplierafterTrend;
+        self.levelDecreaseMultiplierafterTrend = levelDecreaseMultiplierafterTrend;
         self.profitPercentage = profitPercentage;
 
         self.currentStep = 0;
         self.remainderOfStep = firstLevelJettonQuantity;
         self.contractJettonBalance = 0;
-        self.tonBalanceRedemption = ton("0");
         self.jettonsEarned = 0;
-        self.commission = ton("0.05");
         self.queryId = 0;
         self.contractTonBalance = 0;
-        self.additionalJettonWalletAddress = newAddress(0, 0);
-        self.additionalJettonMasterAddress = newAddress(0, 0);
+        self.additionalJettonWalletAddress = owner;
+        self.additionalJettonMasterAddress = owner;
         self.totalJettonsSold = 0;
         self.quantityJettonsPerLevel = firstLevelJettonQuantity;
         self.actualProfit = 0;
         self.currentPrice = initialPricePerToken;
-        self.anotherTokenAmount = 0;
         self.currentStepEarned = 0;
         self.remainderOfStepEarned = firstLevelJettonQuantity;
         self.quantityJettonsPerLevelEarned = firstLevelJettonQuantity;
         self.currentPriceEarned = initialPricePerToken;
+        self.commission = FIVE_HUNDREDTHS_TON;
 
         send(SendParameters{
             to: self.jettonMasterAddress,
@@ -126,6 +127,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
 
     receive(msg: TakeWalletAddress) {
         let ctx: Context = context();
+        require(self.contractJettonWalletAddress != newAddress(0, 0), "Contract jetton wallet address cannot be zero");
         require(ctx.sender == self.jettonMasterAddress, "Invalid sender");
         self.contractJettonWalletAddress = msg.wallet_address;
     }
@@ -133,30 +135,44 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
 
     receive(msg: ExtendLock) {
         self.requireOwner();
-        let value = context().value; 
-        require(value > self.commission, "Amount must be greater than 0.05");
-        self.lockEndTime = self.lockEndTime + msg.additionalTime;            
+        require(context().value > self.commission, "Amount must be greater than 0.05");
+        let newLockEndTime = self.lockEndTime + msg.additionalTime;
+        require(newLockEndTime - now() < TWO_YEARS, "Lock end time cannot exceed two years");
+        require(msg.additionalTime == HALF_YEAR || msg.additionalTime == TEN_MINUTES || msg.additionalTime == THREE_MONTHS, "Invalid time!");
+        self.lockEndTime = newLockEndTime;
 
-        if (msg.additionalTime == 15_768_000) {
+        if (msg.additionalTime == HALF_YEAR) {
             send(SendParameters{
                 to: self.owner,
                 value: 0,
                 bounce: true,
                 mode: SendPayGasSeparately,
                 body: "Lock extended for 182 days.".asComment()
-            });        
-        } else {
-            require (msg.additionalTime == 600, "Invalid time!");
+            });
+        } else if (msg.additionalTime == TEN_MINUTES) {
             send(SendParameters{
                 to: self.owner,
                 value: 0,
                 bounce: true,
                 mode: SendPayGasSeparately,
                 body: "Lock extended for 10 minutes.".asComment()
-            }); 
+            });
+        } else {
+            send(SendParameters{
+                to: self.owner,
+                value: 0,
+                bounce: true,
+                mode: SendPayGasSeparately,
+                body: "Lock extended for 3 months.".asComment()
+            });
         }
     }
 
+    receive(msg: ChangeCommissionValue) {
+        self.requireOwner();
+        require(msg.commissionValue >= FIVE_HUNDREDTHS_TON, "Amount must be greater than 0.05");
+        self.commission = msg.commissionValue;
+    }
 
     receive(msg: ChangeMarketMaker) {
         self.requireOwner();
@@ -168,24 +184,33 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         self.returnWalletAddress = msg.newReturnWalletAddress;
     }
 
+    receive(msg: ChangeRoyaltyWallet) {
+        require(sender() == self.royaltyWalletAddress, "Access is only for royalty.");
+        self.royaltyWalletAddress = msg.newRoyaltyWalletAddress;
+    }
+
     receive(msg: AddAdditionalJettonData) {
         self.requireOwner();
+        require(msg.newAdditionalJettonMasterAddress != newAddress(0, 0), "Additional jetton master address in message cannot be zero");
+        require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in mesage cannot be zero");
+        require(self.additionalJettonMasterAddress != newAddress(0, 0), "Additional jetton master address cannot be zero");
+        require(self.additionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address cannot be zero");
         require(msg.newAdditionalJettonMasterAddress != self.jettonMasterAddress && msg.newAdditionalJettonWalletAddress != self.contractJettonWalletAddress, "Additional addresses match addresses of the main jetton!");
         self.additionalJettonMasterAddress = msg.newAdditionalJettonMasterAddress;
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
-        self.anotherTokenAmount = msg.amount;
+        self.transferAdditionalTokensTo(msg.amount);
+        self.queryId += 1;
     }
 
     receive() {
         let value = context().value - self.commission * 2;
         if (sender() == self.owner){
-            self.contractTonBalance = self.contractTonBalance + value + self.commission * 2;
+            self.contractTonBalance = self.contractTonBalance + context().value;
         } else {
-            if (self.lockEndTime - now() > 5_184_000) {
+            if (self.lockEndTime - now() > SIXTY_DAYS) {
                 require(sender() == self.marketMakerAddress, "Now can trade only MarketMaker");
             }
-            require(value > self.commission, "Amount must be greater than 0.15");
-
+            require(value >= self.commission, "Insufficient funds to cover commission");
 
 
             let totalTokens: Int = self.calculateJettonsToGiveForTonAmount(value);
@@ -193,8 +218,8 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             let royaltyProfit: Int = self.actualProfit * 2 / 10;
             let netValue: Int = value - self.actualProfit;
 
-            self.contractTonBalance = self.contractTonBalance + netValue;
-            self.totalJettonsSold = self.totalJettonsSold + totalTokens;
+            self.contractTonBalance += netValue;
+            self.totalJettonsSold += totalTokens;
 
             send(SendParameters{
                 to: self.owner,
@@ -233,15 +258,9 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             require(value > self.commission, "Amount must be greater than 0.05");
             let amount: Int = msg.amount;
             let tokensAvailableForReturnBuyback: Int = self.totalJettonsSold - self.jettonsEarned;
-            let tonToPay: Int = 0;
-            if (amount >= tokensAvailableForReturnBuyback) {
-                tonToPay = self.calculateTonForTokenAmountEarned(tokensAvailableForReturnBuyback);
-                self.jettonsEarned = self.jettonsEarned + tokensAvailableForReturnBuyback;
-            }
-            else {
-                tonToPay = self.calculateTonForTokenAmountEarned(amount);
-                self.jettonsEarned = self.jettonsEarned + amount;
-            }
+            let effectiveAmount: Int = min(amount, tokensAvailableForReturnBuyback);
+            let tonToPay: Int = self.calculateTonForTokenAmountEarned(effectiveAmount);
+            self.jettonsEarned = self.jettonsEarned + effectiveAmount;
 
             if (self.contractTonBalance - tonToPay) < 0 {
                 self.contractTonBalance = 0;
@@ -259,17 +278,14 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                 body: "Price Growth Buyback".asComment()
             });
         } else {
-            if (self.lockEndTime - now() > 5_184_000) {
+            if (self.lockEndTime - now() > SIXTY_DAYS) {
                 require(msg.sender == self.marketMakerAddress, "Now can trade only MarketMaker");
             }
             require(value > self.commission, "Amount must be greater than 0.05");
             let tokensAvailableForBuyback: Int = self.totalJettonsSold - self.jettonsEarned;
             let tokenForBuyback: Int = msg.amount;
-            if (tokenForBuyback >= tokensAvailableForBuyback) {
-                self.contractJettonBalance = self.contractJettonBalance + (tokenForBuyback - tokensAvailableForBuyback);
-                tokenForBuyback = tokensAvailableForBuyback;
-            }
             require(tokensAvailableForBuyback > 0, "Not have tokensAvailableForBuyback");
+            require(tokensAvailableForBuyback < tokenForBuyback, "Insufficient tokens available for buyback");
             let tonToPay: Int = self.calculateTonToPayForTokenAmount(tokenForBuyback);
 
             if (self.contractTonBalance - tonToPay < 0) {
@@ -332,7 +348,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
 
     receive(msg: WithdrawUnusedTons) {
         self.requireOwner();
-        let unusedTonToWithdraw: Int = myBalance() - self.contractTonBalance - (self.commission * 10);
+        let unusedTonToWithdraw: Int = myBalance() - self.contractTonBalance - (self.commission * COMMISSION_MULTIPLIER);
         send(SendParameters{
             to: self.owner,
             value: unusedTonToWithdraw,
@@ -342,10 +358,26 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         });
     }
 
+    fun transferAdditionalTokensTo(amount: Int) {
+        send(SendParameters{
+            to: self.additionalJettonWalletAddress,
+            value: self.commission,
+            body: JettonTransfer{
+                queryId: self.queryId,
+                amount: amount,
+                destination: self.owner,
+                responseDestination: self.owner,
+                customPayload: null,
+                forwardTonAmount: 1,
+                forwardPayload: rawSlice("4_")
+            }.toCell(),
+        });
+    }
+
     fun transferTokensTo(recipient: Address, amount: Int) {
         send(SendParameters{
             to: self.contractJettonWalletAddress,
-            value: JettonTransferGas,
+            value: self.commission,
             body: JettonTransfer{
                 queryId: self.queryId,
                 amount: amount,
@@ -356,6 +388,23 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                 forwardPayload: rawSlice("4_")
             }.toCell(),
         });
+    }
+
+    fun calculateProfit(currentStep: Int): Int {
+        if (currentStep > self.trendChangeStep) {
+            return self.profitPercentage;
+        } else {
+            return self.profitPercentage * 2;
+        }
+    }
+
+    fun calculateJettonsPerLevel(jettonsPerLevel: Int, currentStep: Int): Int {
+        if (currentStep > self.trendChangeStep) {
+            return (jettonsPerLevel *
+            (1000 - self.levelDecreaseMultiplierafterTrend)) / 1000;
+        } else {
+            return (jettonsPerLevel * (1000 + self.levelIncreaseMultiplier)) / 1000;
+        }
     }
 
     fun calculateJettonsToGiveForTonAmount(tonAmount: Int): Int {
@@ -373,47 +422,34 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             let tonRequiredForStep: Int = tokensAvailableInStep * currentPrice / 1000000000;
 
             if (remainingTonAmount >= tonRequiredForStep) {
-                jettonsToGive = jettonsToGive + tokensAvailableInStep;
-                let profitPercentage: Int = 0;
-                if (localCurrentStep > self.trendChangeStep) {
-                    profitPercentage = self.profitPercentage;
-                } else {
-                    profitPercentage = self.profitPercentage * 2;
-                }
+                jettonsToGive += tokensAvailableInStep;
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let profitInStep: Int = (tonRequiredForStep * profitPercentage) / 1000;
 
-                totalProfit = totalProfit + profitInStep;
+                totalProfit += profitInStep;
 
-                remainingTonAmount = remainingTonAmount - tonRequiredForStep;
+                remainingTonAmount -= tonRequiredForStep;
 
-                localCurrentStep = localCurrentStep + 1;
+                localCurrentStep += 1;
 
-                if (localCurrentStep > self.trendChangeStep) {
-                    jettonsPerLevel = (jettonsPerLevel * (1000 - self.levelIncreaseMultiplierafterTrend)) / 1000;
-                } else {
-                    jettonsPerLevel = (jettonsPerLevel * (1000 + self.levelIncreaseMultiplier)) / 1000;
-                }
+                jettonsPerLevel = self.calculateJettonsPerLevel(jettonsPerLevel, localCurrentStep);
+
                 remainderOfStep = jettonsPerLevel;
                 currentPrice = (currentPrice * (1000 + self.priceIncrementMultiplier)) / 1000;
             } else {
                 let tokensToBuyInThisStep: Int = remainingTonAmount * 1000000000 / currentPrice;
-                jettonsToGive = jettonsToGive + tokensToBuyInThisStep;
+                jettonsToGive += tokensToBuyInThisStep;
                 let tonSpentInThisStep: Int = remainingTonAmount;
 
-                let profitPercentage: Int = 0;
-                if (localCurrentStep > self.trendChangeStep) {
-                    profitPercentage = self.profitPercentage;
-                } else {
-                    profitPercentage = self.profitPercentage * 2;
-                }
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let profitInStep: Int = (tonSpentInThisStep * profitPercentage) / 1000;
 
-                totalProfit = totalProfit + profitInStep;
+                totalProfit += profitInStep;
 
                 remainingTonAmount = 0;
-                remainderOfStep = remainderOfStep - tokensToBuyInThisStep;
+                remainderOfStep -= tokensToBuyInThisStep;
             }
         }
 
@@ -449,29 +485,25 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             let tokensAvailableInStep: Int = jettonsPerLevel - remainderOfStep;
 
             if (remainingJettonAmount >= tokensAvailableInStep) {
-                let profitPercentage: Int = 0;
-                if (localCurrentStep > self.trendChangeStep) {
-                    profitPercentage = self.profitPercentage;
-                } else {
-                    profitPercentage = self.profitPercentage * 2;
-                }
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
+
 
                 let adjustedPrice: Int = currentPrice * (1000 - profitPercentage) / 1000;
                 let tonToPayForStep: Int = tokensAvailableInStep * adjustedPrice / 1000000000;
-                tonToPay = tonToPay + tonToPayForStep;
+                tonToPay += tonToPayForStep;
 
-                remainingJettonAmount = remainingJettonAmount - tokensAvailableInStep;
-                
-                if (localCurrentStep > 0) {
+                remainingJettonAmount -= tokensAvailableInStep;
+
+                if (localCurrentStep > self.currentStepEarned) {
                     if (localCurrentStep > self.trendChangeStep) {
-                        jettonsPerLevel = jettonsPerLevel * 1000 / (1000 - self.levelIncreaseMultiplierafterTrend);
+                        jettonsPerLevel = jettonsPerLevel * 1000 / (1000 - self.levelDecreaseMultiplierafterTrend);
                     } else {
                         jettonsPerLevel = jettonsPerLevel * 1000 / (1000 + self.levelIncreaseMultiplier);
                     }
                     currentPrice = currentPrice * 1000 / (1000 + self.priceIncrementMultiplier);
                 }
                 if (localCurrentStep > self.currentStepEarned) {
-                    localCurrentStep = localCurrentStep - 1;
+                    localCurrentStep -= 1;
                     remainderOfStep = 0;
                 } else {
                     localCurrentStep = self.currentStepEarned;
@@ -479,20 +511,15 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                     remainingJettonAmount = 0;
                 }
 
-                
+
             } else {
-                let profitPercentage: Int = 0;
-                if (localCurrentStep > self.trendChangeStep) {
-                    profitPercentage = self.profitPercentage;
-                } else {
-                    profitPercentage = self.profitPercentage * 2;
-                }
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (1000 - profitPercentage) / 1000;
                 let tonToPayForStep: Int = remainingJettonAmount * adjustedPrice / 1000000000;
-                tonToPay = tonToPay + tonToPayForStep;
+                tonToPay += tonToPayForStep;
 
-                remainderOfStep = remainderOfStep + remainingJettonAmount;
+                remainderOfStep += remainingJettonAmount;
                 remainingJettonAmount = 0;
             }
         }
@@ -522,42 +549,28 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             let tokensAvailableInStep: Int = remainderOfStep;
 
             if (remainingJettonAmount >= tokensAvailableInStep) {
-                let profitPercentage: Int = 0;
-                if (localCurrentStep > self.trendChangeStep) {
-                    profitPercentage = self.profitPercentage;
-                } else {
-                    profitPercentage = self.profitPercentage * 2;
-                }
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (1000 - profitPercentage) / 1000;
                 let tonToPayForStep: Int = tokensAvailableInStep * adjustedPrice / 1000000000;
-                tonToPay = tonToPay + tonToPayForStep;
+                tonToPay += tonToPayForStep;
 
-                localCurrentStep = localCurrentStep + 1;
+                localCurrentStep += 1;
 
-                if (localCurrentStep > self.trendChangeStep) {
-                    jettonsPerLevel = jettonsPerLevel * (1000 - self.levelIncreaseMultiplierafterTrend) / 1000;
-                } else {
-                    jettonsPerLevel = jettonsPerLevel * (1000 + self.levelIncreaseMultiplier) / 1000;
-                }
+                jettonsPerLevel = self.calculateJettonsPerLevel(jettonsPerLevel, localCurrentStep);
                 remainderOfStep = jettonsPerLevel;
-                remainingJettonAmount = remainingJettonAmount - tokensAvailableInStep;
+                remainingJettonAmount -= tokensAvailableInStep;
 
                 currentPrice = currentPrice * (1000 + self.priceIncrementMultiplier) / 1000;
             } else {
-                let profitPercentage: Int = 0;
-                if (localCurrentStep > self.trendChangeStep) {
-                    profitPercentage = self.profitPercentage;
-                } else {
-                    profitPercentage = self.profitPercentage * 2;
-                }
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (1000 - profitPercentage) / 1000;
 
                 let tonToPayForStep: Int = remainingJettonAmount * adjustedPrice / 1000000000;
-                tonToPay = tonToPay + tonToPayForStep;
+                tonToPay += tonToPayForStep;
 
-                remainderOfStep = remainderOfStep - remainingJettonAmount;
+                remainderOfStep -= remainingJettonAmount;
                 remainingJettonAmount = 0;
             }
         }
@@ -580,7 +593,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
     }
 
     get fun trading_opportunity(): Bool {
-        return self.lockEndTime - now() < 5_184_000;
+        return self.lockEndTime - now() < SIXTY_DAYS;
     }
 
     get fun jetton_balance(): Int {
@@ -618,7 +631,6 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
     get fun owner_address(): Address {
         return self.owner;
     }
-
 
     get fun jetton_wallet_address(): Address {
         return self.contractJettonWalletAddress;
@@ -660,7 +672,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
     }
 
     get fun unused_tons(): Int {
-        let unused_amount: Int = myBalance() - self.contractTonBalance - self.commission;
+        let unused_amount: Int = myBalance() - self.contractTonBalance - (self.commission * COMMISSION_MULTIPLIER);
         return unused_amount;
     }
 

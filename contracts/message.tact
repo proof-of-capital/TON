@@ -61,3 +61,11 @@ message AddAdditionalJettonData {
 }
 
 message WithdrawUnusedTons {}
+
+message ChangeCommissionValue {
+    commissionValue: Int as coins;
+}
+
+message ChangeRoyaltyWallet {
+    newRoyaltyWalletAddress: Address;
+}
