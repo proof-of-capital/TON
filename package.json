@@ -1,5 +1,5 @@
 {
-    "name": "proof-of-capital",
+    "name": "NewPOKVersion",
     "version": "0.0.1",
     "scripts": {
         "start": "blueprint run",
@@ -22,7 +22,6 @@
         "typescript": "^5.6.3"
     },
     "dependencies": {
-        "fast-check": "^3.23.2",
-        "readline-sync": "^1.4.10"
+        "@tact-lang/compiler": "^1.6.7"
     }
 }

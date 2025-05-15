@@ -27,7 +27,7 @@ message(0xf8a7ea5) JettonTransfer {
     responseDestination: Address?;
     customPayload: Cell? = null;
     forwardTonAmount: Int as coins;
-    forwardPayload: Slice as remaining;
+    forwardPayload: Cell?;
 }
 
 message(0x595f07bc) JettonBurn {
@@ -54,6 +54,8 @@ message WithdrawAllTons {}
 
 message WithdrawAllCoins {}
 
+message WithdrawAllSupportCoins {}
+
 message AddAdditionalJettonData {
     newAdditionalJettonMasterAddress: Address;
     newAdditionalJettonWalletAddress: Address;
@@ -62,10 +64,69 @@ message AddAdditionalJettonData {
 
 message WithdrawUnusedTons {}
 
+message WithdrawUnusedSupportCoins {}
+
 message ChangeCommissionValue {
     commissionValue: Int as coins;
 }
 
+message AssignReserveOwner {
+    reserveOwner: Address;
+}
+
+message OnSwitchOwner {
+    turnOnValue: Bool;
+}
+
+message SwitchSelectorProfit {
+    flag: Bool;
+}
+
+message GetProfitOnRequest {}
+
 message ChangeRoyaltyWallet {
     newRoyaltyWalletAddress: Address;
+}
+
+message AddMarketMakerAddresses {
+    newMarketMakerAddresse: Address;
+}
+
+message DeleteMarketMakerAddresses {
+    delMarketMakerAddresse: Address;
+}
+
+message StartDeferredLock {
+    recipientAddress: Address;
+}
+
+message SpecialWithdrawal {
+    amountSupport: Int as coins;
+    amountMainJettons: Int as coins;
+}
+
+message ChangeProfitPercentage {
+    newRoyaltyProfitPercentage: Int as uint8;
+}
+
+message BlockSpecialWithdrawal { }
+
+message JettonDeferredWithdrawal {
+    amount: Int as coins;
+    recipientAddress: Address;
+}
+
+message SupportDeferredWithdrawal {
+    amount: Int as coins;
+    recipientAddress: Address;
+}
+
+message StopJettonDefWTH { }
+message StopSupportDefWTH { }
+
+message ConfirmJettonDefWTH { }
+message ConfirmSupportDefWTH { }
+
+message OldContractAddress {
+    oldContractAddress: Address;
 }
