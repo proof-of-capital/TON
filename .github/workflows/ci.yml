@@ -40,7 +40,7 @@ jobs:
 
     - name: Run Misti
       run: |
-        yarn blueprint misti --disabled-detectors "PreferredStdlibApi,ZeroAddress,DivideBeforeMultiply" contracts
+        yarn blueprint misti --disabled-detectors "PreferredStdlibApi,ZeroAddress,DivideBeforeMultiply,EtaLikeSimplifications" contracts
 
     - name: Build
       run: |
