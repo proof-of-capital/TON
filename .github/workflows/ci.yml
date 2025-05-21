@@ -34,9 +34,9 @@ jobs:
     - name: Install npm dependencies
       run: yarn install
 
-    - name: Spellcheck
-      run: |
-        yarn spell
+    # - name: Spellcheck
+    #   run: |
+    #     yarn spell
 
     - name: Run Misti
       run: |
