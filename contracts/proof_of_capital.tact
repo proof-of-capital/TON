@@ -17,121 +17,119 @@
 // All royalties collected are automatically used to repurchase the project’s core token, as
 // specified on the website, and are returned to the contract.
 
+// This is the third version of the contract. It introduces the following features: the ability to choose any jetton as support, build support with an offset,
+// perform delayed withdrawals (and restrict them if needed), assign multiple market makers, modify royalty conditions, and withdraw profit on request.
+
+
 import "@stdlib/deploy";
 import "@stdlib/ownable";
 import "./messages";
-import "./test_functions";
 
 
-const TWO_YEARS: Int = 63_072_000; // 2 года (используется для продления лока)
-const HALF_YEAR: Int = 15_768_000; // полгода (используется для продления лока)
-const SIXTY_DAYS: Int = 5_184_000; // 60 дней (используется для проверка наступления "окна разлока")
-const THREE_MONTHS: Int = 7_776_000; // 3 месяца (используется для продления лока)
-const MIN_CONTROL_PERIOD: Int = 21_600; // 6 часов (минимальный период действия "окна разлока")
-const TEN_MINUTES: Int = 600; // 10 минут (используется для продления лока)
-const FIVE_HUNDREDTHS_TON: Int = ton("0.05"); // минимальное количество TON на комиссии
-const COMMISSION_MULTIPLIER: Int = 10; // множитель комиссии (используется для расчета остатка баланса на контракте при выводе TON в размере 10-кратной комиссии)
-const THREE_WEEKS: Int = 1_814_000; // 3 недели до наступления даты отложенного вывода жетона
-const THIRTY_DAYS: Int = 2_592_000; // 30 дней до наступления дат отложенных выводов основного жетона, жетона обеспечения
+const TWO_YEARS: Int = 63_072_000; // 2 years (used as the maximum lock extension period)
+const HALF_YEAR: Int = 15_768_000; // half a year (used for lock extension)
+const SIXTY_DAYS: Int = 5_184_000; // 60 days (used to check the start of the "unlock window" — the period before the end of the lock when the contract becomes public)
+const THREE_MONTHS: Int = 7_776_000; // 3 months (used for lock extension)
+const MIN_CONTROL_PERIOD: Int = 21_600; // 6 hours (minimum duration of the "unlock window" — the period when the contract is open to all)
+const TEN_MINUTES: Int = 600; // 10 minutes (used for lock extension in tests)
+const FIVE_HUNDREDTHS_TON: Int = ton("0.05"); // minimum TON amount for covering fees
+const COMMISSION_MULTIPLIER: Int = 10; // commission multiplier (used to calculate the remaining contract balance when withdrawing TON equal to 10 times the fee)
+const THREE_WEEKS: Int = 1_814_000; // 3 weeks before the deferred token withdrawal date
+const THIRTY_DAYS: Int = 2_592_000; // 30 days before the deferred withdrawal dates for the primary and backing tokens
 
-// Ограничивает переданный период значениями от MIN_CONTROL_PERIOD до SIXTY_DAYS.
-fun choosePeriod(period: Int): Int {
+// Limits the given period to a range between MIN_CONTROL_PERIOD and SIXTY_DAYS.
+fun getPeriod(period: Int): Int {
     if (period < MIN_CONTROL_PERIOD) {
         period = MIN_CONTROL_PERIOD;
-    } else if (period > SIXTY_DAYS) {
+    } else if (period > SIXTY_DAYS) { // TODO: it might be worth limiting the upper range to a few days
         period = SIXTY_DAYS;
     }
     return period;
 }
 
-contract ProofOfCapital with Deployable, OwnableTransferable {
+contract ProofOfCapital with Deployable, Ownable { 
+    isActive: Bool = true; // Contract activity flag
+    oldContractAddress: Address; // Address of the old contract, from which coins are expected to be transferred to the current contract (messages are treated as if sent by the owner)
+
+    id: Int as uint256; // Unique contract identifier, passed during deployment and used to initialize the contract address when choosing a special address (default is 0)
+    owner: Address; // Creator's address — the main owner of the contract, who can manage it and perform certain actions (token deposits, withdrawals, setting locks, changing participants)
+    reserveOwner: Address; // Backup owner's address, who can replace the creator (in case access to the main owner is lost) and replace themselves
+    jettonMasterAddress: Address; // Address of the jetton master contract, used to obtain the wallet address of the main jetton
+    returnWalletAddress: Address; // Return wallet address, which can return tokens to the contract and receive support from lower levels
+    royaltyWalletAddress: Address; // Royalty wallet address, which receives royalties from revenue-generating operations
+    lockEndTime: Int as uint64; // UNIX time until which certain actions are blocked (token withdrawals, purchases, sales by regular users, etc.)
+    initialPricePerToken: Int as coins; // Initial price of a single jetton
+    firstLevelJettonQuantity: Int as coins; // Number of tokens at the first level (before the first price increase)
+    priceIncrementMultiplier: Int as uint16; // Price increase multiplier when moving to a new level
+    commission: Int as coins; // Fee charged on transactions (in TON)
+    controlDay: Int as uint64; // Date of the "unlock window", which opens every 60 days by default for regular user trading
+    controlPeriod: Int as uint32; // Duration of the "unlock window"
+
+    levelIncreaseMultiplier: Int as uint16; // Multiplier for increasing the number of tokens at the next level before the trend change
+    trendChangeStep: Int as uint8; // Step at which the trend changes — after this step, the number of issued tokens starts to decrease
+    levelDecreaseMultiplierafterTrend: Int as uint16; // Multiplier for decreasing the number of tokens per level after the trend change
+    profitPercentage: Int as uint16; // Profit percentage to be distributed between the owner and the royalty wallet
+    queryId: Int as uint64; // Identifier of the last transaction
+    totalJettonsSold: Int as coins; // Total number of jettons sold
+    contractSupportBalance: Int as coins; // Balance of support (backing) jettons
+    contractJettonBalance: Int as coins; // Balance of the contract’s main jetton
+    jettonsEarned: Int as coins; // Number of earned jettons — these are the jettons returned to the contract from the returnWalletAddress
+
+    quantityJettonsPerLevel: Int as coins; // Number of jettons at the current level
+    actualProfit: Int as coins; // Actual profit to be distributed between the owner and the royalty wallet
+    currentPrice: Int as coins; // Current price of the jetton
+    currentStep: Int as coins; // Current step the contract is on
+    remainderOfStep: Int as coins; // Remaining jettons at the current step
     
-    oldContractAddress: Address; // Адрес старого контракта, то есть контракта, с которого предполагается вывести монеты на текущий контракт (сообщения обрабатываются как от владельца)
+    // Variables for tracking earned jettons
+    currentStepEarned: Int as coins; // Current return step the contract is on
+    remainderOfStepEarned: Int as coins; // Remaining jettons at the current return step
+    quantityJettonsPerLevelEarned: Int as coins; // Number of jettons at the current return level
+    currentPriceEarned: Int as coins; // Current price of the return jetton
 
-    id: Int as uint256; // Уникальный идентификатор контракта, передается при деплое и необходим для инициализации адреса контракта (по умолчанию - 0)
-    owner: Address; // Адрес основного владельца контракта, который может управлять контрактом и выполнять определенные действия (обязательно для Ownable и OwnableTransferable)
-    reserveOwner: Address; // Адрес резервного владельца контракта, который также может управлять контрактом и выполнять определенные действия (на случай потери доступа к основному владельцу)
-    jettonMasterAddress: Address; // Адрес мастер-контракта жетона, который необходим для получения адреса кошелька основного жетона
-    marketMakerAddress: Address; // Адрес маркет-мейкера, который может взаимодействовать с контрактом и выполнять определенные действия по покупке, продаже жетонов
-    returnWalletAddress: Address; // Адрес возвратного кошелька, на который будут возвращаться жетоны при соответствующем запросе с этого адреса и определенных условиях
-    royaltyWalletAddress: Address; // Адрес royalty-кошелька, получающего роялти от операций
-    lockEndTime: Int as uint64; // Время (UNIX), до которого заблокированы определённые действия (вывод жетонов, покупка, продажа для обычных пользователей и др.)
-    initialPricePerToken: Int as coins; // Начальная цена одного жетона
-    firstLevelJettonQuantity: Int as coins; // Количество токенов на первом уровне (до первого повышения цены)
-    priceIncrementMultiplier: Int as uint16; // Множитель увеличения цены при переходе на новый уровень
-    commission: Int as coins; // Комиссия, взимаемая с транзакций (в TON)
-    controlDay: Int as uint64; // Дата наступления "окна разлока", открывающегося каждые 60 дней для торговли обычным пользователям
-    controlPeriod: Int as uint32; // Период длительности "окна разлока"
+    contractJettonWalletAddress: Address; // Wallet address of the contract's main jetton
+    // Variables for withdrawing third-party jettons that may accidentally be sent to the contract
+    additionalJettonWalletAddress: Address; // Wallet address of the contract's additional jetton
+    additionalJettonMasterAddress: Address; // Master contract address of the contract's additional jetton
 
-    levelIncreaseMultiplier: Int as uint16; // Множитель увеличения количества жетонов на следующем уровне до смены тренда
-    trendChangeStep: Int as uint8; // Шаг смены тренда
-    levelDecreaseMultiplierafterTrend: Int as uint16; // Множитель уменьшения количества жетонов на уровне после смены тренда
-    profitPercentage: Int as uint16; // Процент прибыли, который будет распределяться между владельцем и роялти
-    queryId: Int as uint64; // Идентификатор последней транзакции
-    totalJettonsSold: Int as coins; // Общее количество проданных жетонов
-    contractSupportBalance: Int as coins; // Баланс жетонов обеспечения
-    contractJettonBalance: Int as coins; // Баланс основного жетона контракта
-    jettonsEarned: Int as coins; // Количество заработанных жетонов
+    // Variables for offset accounting. Used to launch the contract when some jettons are missing at deployment.
+    offsetJettons: Int as coins; // Offset in jettons, used for calculating the offset
+    offsetStep: Int as coins; // Current offset step
+    offsetPrice: Int as coins; // Price at the current offset step
+    remainderOffsetJettons: Int as coins; // Remaining jettons at the current offset step
+    sizeOffsetStep: Int as coins; // Current size of the offset step
 
-    quantityJettonsPerLevel: Int as coins; // Количество жетонов на уровне
-    actualProfit: Int as coins; // Фактическая прибыль, которая будет распределяться между владельцем и роялти
-    currentPrice: Int as coins; // Текущая цена жетона
-    currentStep: Int as coins; // Текущий шаг, на котором находится контракт
-    remainderOfStep: Int as coins; // Остаток жетонов на текущем шаге
-    currentStepEarned: Int as coins; // Текущий шаг, на котором находится контракт, с учётом заработанных жетонов
-    remainderOfStepEarned: Int as coins; // Остаток жетонов на текущем шаге, с учётом заработанных жетонов
-    quantityJettonsPerLevelEarned: Int as coins; // Количество жетонов на уровне, с учётом заработанных жетонов
+    callJettonsID: Int as uint8; // Call counter for the initial deposit (1 – first deposit, 0 – all subsequent ones)
 
-    currentPriceEarned: Int as coins; // Текущая цена жетона, с учётом заработанных жетонов
-    contractJettonWalletAddress: Address; // Адрес кошелька основного жетона контракта
-    additionalJettonWalletAddress: Address; // Адрес кошелька дополнительного жетона контракта
-    additionalJettonMasterAddress: Address; // Адрес мастер-контракта дополнительного жетона контракта
+    // New support
+    jettonSupport: Bool; // Jetton support flag. If False — support is provided in TON.
+    jettonSupportMasterAddress: Address; // Master contract address of the support jetton
+    contractJettonSupportWalletAddress: Address; // Contract's support jetton wallet address
 
-    // новые переменные
-    offsetJettons: Int as coins; // Отступ в жетонах, который будет использоваться для расчета отступа
-    offsetStep: Int as coins; // Шаг отступа
-    offsetPrice: Int as coins; // Цена отступа
-    remainderOffsetJettons: Int as coins; // Остаток жетонов на текущем шаге отступа
-    sizeOffsetStep: Int as coins; // Размер шага отступа
-    callJettonsID: Int as uint8; // Счетчик вызова для первого пополнения (1 - первое пополнение) с кошелька владельца либо с адреса старого контракта
+    // Storage of additional market maker addresses
+    marketMakerAddressesMap: map<Address, Int as uint8>; // Map of market maker addresses
+    marketMakerAddressesLength: Int as uint8; // Number of market makers in the map
 
-    switchOwner: Int as uint8; // Переключатель для резервного владельца, который позволяет ему управлять контрактом
+    // Profit withdrawal
+    ownerTonBalance: Int as coins; // Owner's profit in TON
+    royaltyTonBalance: Int as coins; // Royalty profit in TON
+    ownerSupportBalance: Int as coins; // Owner's profit in support jettons
+    royaltySupportBalance: Int as coins; // Royalty profit in support jettons
+    profitInTime: Bool; // Flag indicating whether profit is withdrawn immediately or upon request
+    royaltyProfitPercent: Int as uint8; // Royalty profit percentage (from 1 to 10)
+    creatorProfitPercent: Int as uint8; // Owner profit percentage (from 1 to 10)
 
-    // новое обеспечение
-    jettonSupport: Bool; // Флаг поддержки жетонами
-    jettonSupportMasterAddress: Address; // Адрес мастер-контракта жетона обеспечения
-    contractJettonSupportWalletAddress: Address; // Адрес кошелька жетона обеспечения контракта
+    canWithdrawal: Bool = true; // Flag indicating whether early delayed withdrawal is allowed (true – allowed, false – prohibited)
 
-    contractTonForCommissionBalance: Int as coins; // Баланс TON для комиссии
-    allSupportTokens: Int as coins; // Баланс всех жетонов обеспечения на контракте
+    // Deferred withdrawal
+    mainJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of deferred withdrawal for the main jetton  
+    mainJettonDeferredWithdrawalAmount: Int as coins = 0; // Amount of the main jetton for deferred withdrawal  
+    recipientDeferredWithdrawalMainJetton: Address; // Recipient address for the deferred withdrawal of the main jetton  
 
-    // хранение адресов
-    marketMakerAddressesMap: map<Address, Int as uint8>; // Мапа адресов маркет-мейкеров
-    markerMakerIndex: Int as uint8; // Индекс адресов маркет-мейкеров (количество маркет-мейкеров в мапе)
+    supportJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of deferred withdrawal for the support jetton  
+    recipientDeferredWithdrawalSupportJetton: Address; // Recipient address for the deferred withdrawal of the support jetton
 
-    // вывод профитов
-    ownerTonBalance: Int as coins; // Прибыль TON владельца
-    royaltyTonBalance: Int as coins; // Прибыль TON роялти
-    ownerSupportBalance: Int as coins; // Прибыль в жетонах обеспечения владельца
-    royaltySupportBalance: Int as coins; // Прибыль в жетонах обеспечения роялти
-    profitSelectorOwner: Bool; // Флаг, указывающий, кто получает прибыль (владелец или роялти)
-    royaltyProfitPercent: Int as uint8; // Коэффициент прибыли роялти (от 1 до 10)
-    creatorProfitPercent: Int as uint8; // Коэффициент прибыли владельца (от 1 до 10)
-
-    // короткий лок для вывода USDT
-    deferredLock: Int as uint64; // Дата окончания короткой блокировки
-    recipientDeferredLock: Address; // Адрес получателя отложенного вывода
-
-    canWithdrawal: Int as uint8 = 1; // Флаг, указывающий, можно ли вывести средства (1 - можно, 0 - нельзя)
-
-    // отложенный вывод
-    mainJettonDeferredWTHDate: Int as uint64 = 0; // Дата окончания отложенного вывода основного жетона
-    mainJettonDeferredWTHAmount: Int as coins = 0; // Количество основного жетона для отложенного вывода
-    recipientDeferredWTHMainJetton: Address; // Адрес получателя отложенного вывода основного жетона
-
-    supportJettonDeferredWTHDate: Int as uint64 = 0; // Дата окончания отложенного вывода жетона обеспечения
-    supportJettonDeferredWTHAmount: Int as coins = 0; // Количество жетона обеспечения для отложенного вывода
-    recipientDeferredWTHSupportJetton: Address; // Адрес получателя отложенного вывода жетона обеспечения
+    isInitialized: Bool = false; // Flag indicating whether the contract's jetton wallets are initialized (required to run self.calculateOffset())
 
     init(id: Int,
         owner: Address,
@@ -156,7 +154,6 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         self.oldContractAddress = owner;
         self.id = 0;
         self.owner = owner;
-        self.marketMakerAddress = marketMakerAddress;
         self.jettonMasterAddress = jettonMasterAddress;
         self.contractJettonWalletAddress = owner;
         self.returnWalletAddress = returnWalletAddress;
@@ -198,33 +195,32 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         self.offsetPrice = initialPricePerToken;
         self.remainderOffsetJettons = firstLevelJettonQuantity;
         self.sizeOffsetStep = firstLevelJettonQuantity;
-        self.controlPeriod = choosePeriod(controlPeriod);
+        self.controlPeriod = getPeriod(controlPeriod);
         self.callJettonsID = 1;
 
         self.reserveOwner = owner;
-        self.switchOwner = 0;
-
-        self.contractTonForCommissionBalance = 0;
-        self.allSupportTokens = 0;
 
         self.marketMakerAddressesMap = emptyMap();
-        self.markerMakerIndex = 1;
+        self.marketMakerAddressesLength = 1;
         self.marketMakerAddressesMap.set(marketMakerAddress, 1);
 
         self.ownerTonBalance = 0;
         self.royaltyTonBalance = 0;
         self.ownerSupportBalance = 0;
         self.royaltySupportBalance = 0;
-        self.profitSelectorOwner = true;
+        self.profitInTime = true;
 
         self.royaltyProfitPercent = royaltyProfitPercent;
         self.creatorProfitPercent = 10 - royaltyProfitPercent;
 
-        self.deferredLock = 0;
-        self.recipientDeferredLock = owner;
+        self.recipientDeferredWithdrawalMainJetton = owner;
+        self.recipientDeferredWithdrawalSupportJetton = owner;
 
-        self.recipientDeferredWTHMainJetton = owner;
-        self.recipientDeferredWTHSupportJetton = owner;
+        require(self.initialPricePerToken > 0, "Initial price must be positive");
+        require(self.levelDecreaseMultiplierafterTrend < 1000, "Multiplier too high");
+        require(self.levelIncreaseMultiplier > -1000, "Multiplier too low");
+        require(self.priceIncrementMultiplier > -1000, "Price increment too low");
+        require(self.royaltyProfitPercent > 1, "Started royalty profit cannot be less than two");
 
         send(SendParameters{
             to: self.jettonMasterAddress,
@@ -234,40 +230,43 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         });
     }
 
-    // Принимает и отправляет сообщения на мастер-контракты жетонов, сохраняет адреса кошельков основного жетона и жетона обеспечения.
-    // Запускает функцию расчета отступа.
+    // Receives and sends messages to jetton master contracts, stores the addresses of the main and support jetton wallets.
+    // Change flag isInitialized after all jetton wallets received.
+    // Triggers the offset calculation function.    
     receive(msg: TakeWalletAddress) {
-        let ctx: Context = context();
-        require(self.contractJettonWalletAddress != newAddress(0, 0), "Contract jetton wallet address cannot be zero");
-        require(self.contractJettonSupportWalletAddress != newAddress(0, 0), "Contract jetton support wallet address cannot be zero");
-        if (ctx.sender == self.jettonMasterAddress) {
-            require(ctx.sender == self.jettonMasterAddress, "Invalid jetton master sender");
+        require(sender() == self.jettonMasterAddress || sender() == self.jettonSupportMasterAddress, "Invalid main or support jetton master sender");
+        require(self.isInitialized == false, "Contract jetton wallets are already initialized");
+        if (sender() == self.jettonMasterAddress) {
             self.contractJettonWalletAddress = msg.wallet_address;
+            if (self.jettonSupport) {
+                if (self.contractJettonSupportWalletAddress != msg.wallet_address)  {
+                    send(SendParameters{
+                        to: self.jettonSupportMasterAddress,
+                        value: 0,
+                        mode: SendRemainingValue,
+                        body: ProvideWalletAddress{query_id: now(), owner_address: myAddress(), include_address: true}.toCell()
+                    });
+                }
+            }
         } else {
-            require(ctx.sender == self.jettonSupportMasterAddress, "Invalid jetton support master sender");
             self.contractJettonSupportWalletAddress = msg.wallet_address;
         }
-        if (self.contractJettonSupportWalletAddress != msg.wallet_address && self.jettonSupport == true)  {
-            send(SendParameters{
-                to: self.jettonSupportMasterAddress,
-                value: 0,
-                mode: SendRemainingValue,
-                body: ProvideWalletAddress{query_id: now(), owner_address: myAddress(), include_address: true}.toCell()
-            });
-            self.calculateOffset(self.offsetJettons);        
+        if (self.contractJettonWalletAddress != self.owner && self.contractJettonSupportWalletAddress != self.owner) {
+            self.isInitialized = true;
+            self.calculateOffset(self.offsetJettons);
         }
     }
 
-    // Продлевает блокировку на заданное время по запросу владельца. Поддерживаются 10 минут, 3 месяца или полгода.
+    // Extends the lock for a specified period at the request of the owner. Supported durations are 10 minutes, 3 months, or 6 months.    
     receive(msg: ExtendLock) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(context().value > self.commission, "Amount must be greater than comission");
+        require(sender() == self.owner, "Access is only for primary owner");
+        require(context().value > self.commission, "Amount must be greater than commission");
         require(((self.lockEndTime + msg.additionalTime) - now()) < TWO_YEARS, "Lock end time cannot exceed two years");
         require(msg.additionalTime == HALF_YEAR || msg.additionalTime == TEN_MINUTES || msg.additionalTime == THREE_MONTHS, "Invalid time!");
         self.lockEndTime += msg.additionalTime;            
         if (msg.additionalTime == HALF_YEAR) {
             send(SendParameters{
-                to: self.checkSwitchOwner(),
+                to: self.owner,
                 value: 0,
                 bounce: true,
                 mode: SendPayFwdFeesSeparately,
@@ -275,7 +274,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             });        
         } else if (msg.additionalTime == TEN_MINUTES) {
             send(SendParameters{
-                to: self.checkSwitchOwner(),
+                to: self.owner,
                 value: 0,
                 bounce: true,
                 mode: SendPayFwdFeesSeparately,
@@ -283,7 +282,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             }); 
         } else {
             send(SendParameters{
-                to: self.checkSwitchOwner(),
+                to: self.owner,
                 value: 0,
                 bounce: true,
                 mode: SendPayFwdFeesSeparately,
@@ -292,51 +291,28 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         }
     }
 
-    // Запускает отсроченную блокировку вывода средств на 3 недели для указанного получателя.
-    receive(msg: StartDeferredLock) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(self.jettonSupport == true, "Jetton support is not used");
-        self.recipientDeferredLock = msg.recipientAddress;
-        self.deferredLock = now() + THREE_WEEKS;
-        send(SendParameters{
-            to: self.recipientDeferredLock,
-            value: 0,
-            bounce: true,
-            mode: SendPayFwdFeesSeparately,
-            body: "Delayed withdrawal after three weeks".asComment()
-        });
+    // Locks the ability of the owner to withdraw funds if they want to waive this right during the lock period.
+    // If this receiver is called when less than 60 days remain until the end of the lock (i.e., when users can already interact with the contract),
+    // the owner can re-enable withdrawal—for example, to transfer jettons to another contract with a lock (for a safe migration).
+    receive(msg: BlockDeferredWithdrawal) { 
+        require(sender() == self.owner, "Access is only for primary owner");
+        if (self.canWithdrawal) {
+            self.canWithdrawal = false;
+        } else {
+            require(self.lockEndTime - now() > SIXTY_DAYS, "Withdrawal is blocked. You can activate Withdrawal later than 60 days before lockEndTime");
+            self.canWithdrawal = true;
+        }
     }
 
-    // Блокирует возможность вывода средств владельцем.
-    receive(msg: BlockSpecialWithdrawal) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(self.canWithdrawal != 0, "Withdrawal is already blocked");
-        self.canWithdrawal = 0;
-    }
 
-    // Выполняет отложенный вывод средств получателю после завершения блокировки.
-    receive(msg: SpecialWithdrawal) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(self.canWithdrawal == 1, "Special withdrawa is blocked");
-        require(now() >= self.deferredLock, "Lock period has not ended yet!");
-        require(self.jettonSupport == true, "Jetton support is not used");
-        self.transferTokensTo(self.contractJettonSupportWalletAddress, self.recipientDeferredLock, msg.amountSupport, "Deferred support jetton transfer");
-        self.transferTokensTo(self.contractJettonWalletAddress, self.recipientDeferredLock, msg.amountMainJettons, "Deferred main jetton transfer");
-        let amountSupport: Int = self.allSupportTokens >= msg.amountSupport ? msg.amountSupport : self.allSupportTokens;
-        let amountMainJettons: Int = self.contractJettonBalance >= msg.amountMainJettons ? msg.amountMainJettons : self.contractJettonBalance;
-        self.contractSupportBalance = self.contractSupportBalance - amountSupport > 0 ? self.contractSupportBalance - amountSupport : 0;
-        self.allSupportTokens -= amountSupport;
-        self.contractJettonBalance -= amountMainJettons;
-        self.deferredLock = 0;
-    }
-
-    // Назначает отложенный вывод основного жетона через 30 дней на указанный адрес.
+    // Schedules a deferred withdrawal of the main jetton in 30 days to the specified address.
     receive(msg: JettonDeferredWithdrawal) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(msg.recipientAddress != newAddress(0, 0) && msg.amount > 0, "Recipient address and jetton amount cannot be zero");
-        self.recipientDeferredWTHMainJetton = msg.recipientAddress;
-        self.mainJettonDeferredWTHDate = now() + THIRTY_DAYS;
-        self.mainJettonDeferredWTHAmount = msg.amount;
+        require(sender() == self.owner, "Access is only for primary owner");
+        require(msg.recipientAddress != newAddress(0, 0) && msg.amount > 0, "Recipient address and jetton amount cannot be zero"); 
+        require(self.canWithdrawal == true, "Deferred withdrawal is blocked");
+        self.recipientDeferredWithdrawalMainJetton = msg.recipientAddress;
+        self.mainJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
+        self.mainJettonDeferredWithdrawalAmount = msg.amount;
         send(SendParameters{
             to: msg.recipientAddress,
             value: self.commission,
@@ -346,36 +322,37 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         });
     }
 
-    // Отменяет отложенный вывод основного жетона и сбрасывает связанные данные.
+    // Отменяет отложенный вывод основного жетона и сбрасывает связанные данные. Может вызваться как создателем, так и роялти-кошельком.
     receive(msg: StopJettonDeferredWithdrawal) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(self.mainJettonDeferredWTHDate != 0, "Main jetton deferred withdrawal date is not set");
-        self.mainJettonDeferredWTHDate = 0;
-        self.mainJettonDeferredWTHAmount = 0;
-        self.recipientDeferredWTHMainJetton = self.checkSwitchOwner();
+        require(sender() == self.owner || sender() == self.royaltyWalletAddress, "Access is only for owner or royaltyWallet");
+        require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set");
+        self.mainJettonDeferredWithdrawalDate = 0;
+        self.mainJettonDeferredWithdrawalAmount = 0;
+        self.recipientDeferredWithdrawalMainJetton = self.owner;
         self.notify("Main jetton deferred withdrawal stopped and date reset".asComment());
     }
 
-    // Подтверждает и выполняет отложенный вывод основного жетона после истечения срока ожидания.
+    // Cancels the deferred withdrawal of the main jetton and resets the related data. Can be called by either the creator or the royalty wallet.
     receive(msg: ConfirmJettonDeferredWithdrawal) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(self.mainJettonDeferredWTHDate != 0, "Main jetton deferred withdrawal date is not set or reset");
-        require(now() >= self.mainJettonDeferredWTHDate, "Main jetton deferred withdrawal date is not arrived yet");
-        self.transferTokensTo(self.contractJettonWalletAddress, self.recipientDeferredWTHMainJetton, self.mainJettonDeferredWTHAmount, "Main jetton deferred withdrawal");
-        self.contractJettonBalance -= self.mainJettonDeferredWTHAmount;
-        self.totalJettonsSold -= self.mainJettonDeferredWTHAmount; 
-        self.mainJettonDeferredWTHDate = 0;
-        self.mainJettonDeferredWTHAmount = 0;
-        self.recipientDeferredWTHMainJetton = self.checkSwitchOwner();
+        require(sender() == self.owner, "Access is only for primary owner");
+        require(self.canWithdrawal == true, "Deferred withdrawal is blocked");
+        require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set or reset");
+        require(now() >= self.mainJettonDeferredWithdrawalDate, "Main jetton deferred withdrawal date is not arrived yet");
+        let amountToWithdraw: Int = self.contractJettonBalance < self.mainJettonDeferredWithdrawalAmount ? self.contractJettonBalance : self.mainJettonDeferredWithdrawalAmount;
+        self.transferTokensTo(self.contractJettonWalletAddress, self.recipientDeferredWithdrawalMainJetton, amountToWithdraw, "Main jetton deferred withdrawal");
+        self.contractJettonBalance = self.contractJettonBalance < self.mainJettonDeferredWithdrawalAmount ? 0 : self.contractJettonBalance - self.mainJettonDeferredWithdrawalAmount;
+        self.mainJettonDeferredWithdrawalDate = 0;
+        self.mainJettonDeferredWithdrawalAmount = 0;
+        self.recipientDeferredWithdrawalMainJetton = self.owner;
     }
 
-    // Назначает отложенный вывод жетонов обеспечения через 30 дней на указанный адрес.
+    // Schedules a deferred withdrawal of the support jettons in 30 days to the specified address.
     receive(msg: SupportDeferredWithdrawal) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(msg.recipientAddress != newAddress(0, 0) && msg.amount > 0, "Recipient address and jetton amount cannot be zero");
-        self.recipientDeferredWTHSupportJetton = msg.recipientAddress;
-        self.supportJettonDeferredWTHDate = now() + THIRTY_DAYS;
-        self.supportJettonDeferredWTHAmount = msg.amount;
+        require(sender() == self.owner, "Access is only for primary owner");
+        require(self.canWithdrawal == true, "Deferred withdrawal is blocked");
+        require(msg.recipientAddress != newAddress(0, 0), "Recipient address cannot be null");
+        self.recipientDeferredWithdrawalSupportJetton = msg.recipientAddress;
+        self.supportJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
         send(SendParameters{
             to: msg.recipientAddress,
             value: self.commission,
@@ -385,73 +362,99 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         });
     }
 
-    // Отменяет отложенный вывод жетонов обеспечения и сбрасывает связанные данные.
+    // Cancels the deferred withdrawal of support jettons and resets the related data. Can be called by either the creator or the royalty wallet.
     receive(msg: StopSupportDeferredWithdrawal) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(self.supportJettonDeferredWTHDate != 0, "Support jetton deferred withdrawal date is not set");
-        self.supportJettonDeferredWTHDate = 0;
-        self.supportJettonDeferredWTHAmount = 0;
-        self.recipientDeferredWTHSupportJetton = self.checkSwitchOwner();
+        require(sender() == self.owner || sender() == self.royaltyWalletAddress, "Access is only for owner or royaltyWallet");
+        require(self.supportJettonDeferredWithdrawalDate != 0, "Support jetton deferred withdrawal date is not set");
+        self.supportJettonDeferredWithdrawalDate = 0;
+        self.recipientDeferredWithdrawalSupportJetton = self.owner;
         self.notify("Support jetton deferred withdrawal stopped and date reset".asComment());
     }
 
-    // Подтверждает и выполняет отложенный вывод жетонов обеспечения после истечения срока ожидания.
-    receive(msg: ConfirmSupportDeferredWithdrawal) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(self.supportJettonDeferredWTHDate != 0, "Support jetton deferred withdrawal date is not set or reset");
-        require(now() >= self.supportJettonDeferredWTHDate, "Support jetton deferred withdrawal date is not arrived yet");
-        self.transferTokensTo(self.contractJettonSupportWalletAddress, self.recipientDeferredWTHSupportJetton, self.supportJettonDeferredWTHAmount, "Support jetton deferred withdrawal");
-        self.allSupportTokens -= self.supportJettonDeferredWTHAmount;
-        self.contractSupportBalance -= self.supportJettonDeferredWTHAmount;
-        self.supportJettonDeferredWTHDate = 0;
-        self.supportJettonDeferredWTHAmount = 0;
-        self.recipientDeferredWTHSupportJetton = self.checkSwitchOwner();
+    // Confirms and executes the deferred withdrawal of support jettons after the waiting period expires.
+    receive(msg: ConfirmSupportDeferredWithdrawal) { 
+        require(sender() == self.owner, "Access is only for primary owner");
+        require(self.canWithdrawal == true, "Deferred withdrawal is blocked");
+        require(self.supportJettonDeferredWithdrawalDate != 0, "Support jetton deferred withdrawal date is not set or reset");
+        require(now() >= self.supportJettonDeferredWithdrawalDate, "Support jetton deferred withdrawal date is not arrived yet");
+        if (self.jettonSupport == true) {
+            self.transferTokensTo(self.contractJettonSupportWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, "Support jetton deferred withdrawal");
+        } else {
+            send(SendParameters{
+                to: self.recipientDeferredWithdrawalSupportJetton,
+                value: self.contractSupportBalance,
+                bounce: true,
+                mode: SendPayFwdFeesSeparately,
+                body: "Support jetton deferred withdrawal".asComment()
+            });
+        }
+        
+        self.contractSupportBalance = 0;
+        self.supportJettonDeferredWithdrawalDate = 0;
+        self.recipientDeferredWithdrawalSupportJetton = self.owner;
+        self.isActive = false;
     }
 
-    // Назначает нового резервного владельца. Доступно только текущему резервному владельцу.
-    receive(msg: AssignReserveOwner) {
+    // Assigns a new main owner. Only the current reserve owner can perform this action. 
+    // If the current owner is the reserve owner, both addresses are updated to the new owner.
+    receive(msg: AssignNewOwner) {
         require(sender() == self.reserveOwner, "Only reserve owner can make changes.");
+        require(msg.newOwner != newAddress(0, 0), "New owner address cannot be null.");
+        if (self.owner == self.reserveOwner) {
+            self.owner = msg.newOwner;
+            self.reserveOwner = msg.newOwner; 
+        } else {
+            self.owner = msg.newOwner;
+        }
+    }
+
+    // Assigns a new reserve owner. Only the current reserve owner can perform this action.
+    receive(msg: AssignNewReserveOwner) {
+        require(sender() == self.reserveOwner, "Only reserve owner can make changes.");
+        require(msg.reserveOwner != newAddress(0, 0), "New reserve owner address cannot be null.");
         self.reserveOwner = msg.reserveOwner;
     }
 
-    // Включает переключение владельца. Доступно только резервному владельцу.
-    receive(msg: OnSwitchOwner) {
-        require(sender() == self.reserveOwner, "Only reserve owner can make changes.");
-        require(msg.turnOnValue == true, "Turn on value cannot be false.");
-        self.switchOwner = 1;
+    // Toggles the profit withdrawal mode between immediate and on request.
+    receive(msg: SwitchProfitMode) { 
+        require(sender() == self.owner, "Access is only for owner");
+        require(msg.flag != self.profitInTime, "Turn on value cannot be equal");
+        require(context().value >= self.commission * 2, "Amount must be greater than commission");
+        self.profitInTime = msg.flag;
+        send(SendParameters{
+            to: self.royaltyWalletAddress,
+            value: self.commission,
+            bounce: true,
+            mode: SendPayFwdFeesSeparately,
+            body: "Profit mode switched".asComment()
+        });
     }
 
-    // Переключает источник получения прибыли. Доступно основному или резервному владельцу.
-    receive(msg: SwitchSelectorProfit) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(msg.flag != self.profitSelectorOwner, "Turn on value cannot be equal");
-        self.profitSelectorOwner = msg.flag;
-    }
-
-    // Изменяет значение комиссии. Доступно основному или резервному владельцу.
+    // Changes the commission value.
     receive(msg: ChangeCommissionValue) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
+        require(sender() == self.owner, "Access is only for primary owner");
         require(msg.commissionValue >= FIVE_HUNDREDTHS_TON && msg.commissionValue <= ton("1"), "Amount must be greater than 0.05");
         self.commission = msg.commissionValue;
     }
 
-    // Обновляет адрес возвратного кошелька. Доступно основному или резервному владельцу.
+    // Updates the return wallet address.
     receive(msg: ChangeReturnWallet) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
+        require(sender() == self.owner, "Access is only for primary owner");
         self.returnWalletAddress = msg.newReturnWalletAddress;
     }
 
-    // Обновляет адрес royalty-кошелька. Доступ разрешён только текущему royalty-адресу.
+    // Updates the royalty wallet address. Access is allowed only to the current royalty address.
     receive(msg: ChangeRoyaltyWallet) {
         require(sender() == self.royaltyWalletAddress, "Access is only for royalty.");
         self.royaltyWalletAddress = msg.newRoyaltyWalletAddress;
     }
 
-    // Изменяет распределение прибыли между владельцем и royalty.
-    // Владелец может только увеличивать процент royalty.
-    // Адрес royalty может только уменьшать процент royalty.
+    // Changes the profit distribution between the owner and the royalty.
+    // The owner can only increase the royalty percentage.
+    // The royalty address can only decrease the royalty percentage.
     receive(msg: ChangeProfitPercentage) {
-        require(sender() == self.checkSwitchOwner() || sender() == self.royaltyWalletAddress, "Access only for owner or royalty");
+        require(sender() == self.owner || sender() == self.royaltyWalletAddress, "Access only for owner or royalty");
+        require((msg.newRoyaltyProfitPercentage > 0 && msg.newRoyaltyProfitPercentage < 11), "Incorrect value of the royalty profit");
         if (sender() == self.owner) {
             require(msg.newRoyaltyProfitPercentage > self.royaltyProfitPercent, "New percentage cannot be less than current");
             self.royaltyProfitPercent = msg.newRoyaltyProfitPercentage;
@@ -463,103 +466,121 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         }
     }
 
-    // Обновляет адреса дополнительного jetton и переводит указанный объём владельцу.
-    // Проверяет уникальность и корректность новых адресов.
-    // Доступен основному или резервному владельцу.
+    // Updates the additional jetton addresses and transfers the specified amount to the owner.
+    // Verifies the uniqueness and validity of the new addresses.
+    // Intended for withdrawing third-party jettons mistakenly sent to the contract.
     receive(msg: AddAdditionalJettonData) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
+        require(sender() == self.owner, "Access is only for primary owner");
         require(msg.newAdditionalJettonMasterAddress != self.jettonSupportMasterAddress, "Additional jetton master address in message cannot be support master jetton");
         require(msg.newAdditionalJettonWalletAddress != self.contractJettonSupportWalletAddress, "Additional jetton wallet address in mesage cannot be support jetton wallet");
         require(msg.newAdditionalJettonMasterAddress != newAddress(0, 0), "Additional jetton master address in message cannot be zero");
         require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in mesage cannot be zero");
-        require(self.additionalJettonMasterAddress != newAddress(0, 0), "Additional jetton master address cannot be zero"); 
-        require(self.additionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address cannot be zero");
         require(msg.newAdditionalJettonMasterAddress != self.jettonMasterAddress && msg.newAdditionalJettonWalletAddress != self.contractJettonWalletAddress, "Additional addresses match addresses of the main jetton!");
         self.additionalJettonMasterAddress = msg.newAdditionalJettonMasterAddress;
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
-        self.transferTokensTo(self.additionalJettonWalletAddress, self.checkSwitchOwner(), msg.amount, "Send other jettons to owner");
+        self.transferTokensTo(self.additionalJettonWalletAddress, self.owner, msg.amount, "Send other jettons to owner");
         self.queryId += 1;
     }
 
-    // Добавляет новый адрес маркет-мейкера в мапу, если его там нет.
-    // Доступен основному или резервному владельцу.
+    // Adds a new market maker address to the map if it is not already present.
     receive(msg: AddMarketMakerAddresses) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        if (self.marketMakerAddressesMap.get(msg.newMarketMakerAddresse) == null) {
-            self.markerMakerIndex += 1;
-            self.marketMakerAddressesMap.set(msg.newMarketMakerAddresse, self.markerMakerIndex);
+        require(sender() == self.owner, "Access is only for primary owner");
+        if (!self.marketMakerAddressesMap.exists(msg.newMarketMakerAddresse)) {
+            self.marketMakerAddressesLength += 1;
+            self.marketMakerAddressesMap.set(msg.newMarketMakerAddresse, self.marketMakerAddressesLength);
         } else {
             self.notify("Market maker address already exists".asComment());
         }
     }
 
-    // Удаляет адрес маркет-мейкера из мапы, если он существует.
-    // Доступен основному или резервному владельцу.
+    // Removes a market maker address from the map if it exists.
     receive(msg: DeleteMarketMakerAddresses) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        if (self.marketMakerAddressesMap.get(msg.delMarketMakerAddresse) == null) {
+        require(sender() == self.owner, "Access is only for primary owner");
+        if (!self.marketMakerAddressesMap.exists(msg.delMarketMakerAddresse)) {
             self.notify("Market maker address does not exist".asComment());
         } else {
             self.marketMakerAddressesMap.del(msg.delMarketMakerAddresse);
-            self.markerMakerIndex -= 1;
+            self.marketMakerAddressesLength -= 1;
         }
     }
 
-    // Проверяет и регистрирует старый адрес контракта.
-    // Требует, чтобы адрес не был нулевым и не совпадал с основными адресами контракта.
-    // Доступен только основному или резервному владельцу.
+    // Verifies and registers the old contract address.
+    // Requires that the address is non-zero and does not match the main contract addresses.
+    // Intended for use when "migrating" to a new contract.
+    // A lock is set on the new contract, and a deferred withdrawal is initiated on the old one.
     receive(msg: OldContractAddress) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
+        require(sender() == self.owner, "Access is only for primary owner");
         require(msg.oldContractAddress != newAddress(0, 0), "Old contract address cannot be zero");
         require(
-            msg.oldContractAddress != self.checkSwitchOwner() && 
-            msg.oldContractAddress != self.marketMakerAddress &&
+            msg.oldContractAddress != self.owner && 
+            msg.oldContractAddress != self.reserveOwner &&
+            msg.oldContractAddress != self.jettonMasterAddress &&
+            msg.oldContractAddress != self.contractJettonWalletAddress &&
+            msg.oldContractAddress != self.additionalJettonMasterAddress &&
+            msg.oldContractAddress != self.additionalJettonWalletAddress &&
+            msg.oldContractAddress != self.jettonSupportMasterAddress &&
+            msg.oldContractAddress != self.contractJettonSupportWalletAddress &&
+            (!self.marketMakerAddressesMap.exists(msg.oldContractAddress)) &&
             msg.oldContractAddress != self.returnWalletAddress &&
             msg.oldContractAddress != self.royaltyWalletAddress &&
-            msg.oldContractAddress != self.recipientDeferredLock &&
-            msg.oldContractAddress != self.recipientDeferredWTHMainJetton &&
-            msg.oldContractAddress != self.recipientDeferredWTHSupportJetton,
+            msg.oldContractAddress != self.recipientDeferredWithdrawalMainJetton &&
+            msg.oldContractAddress != self.recipientDeferredWithdrawalSupportJetton,
             "Old contract address cannot be equal to any of addresses in contract"
         );
     }
 
-    // Основной обработчик входящих сообщений без параметров (для TON).
+    // Main handler for incoming messages without parameters (for TON).
     //
-    // Логика зависит от режима обеспечения жетона (self.jettonSupport) и адреса отправителя:
-    // - Если включена поддержка жетонами и вызов идёт от владельца (checkSwitchOwner) или старого контракта (oldContractAddress),
-    //   то подтверждается, что поддержка включена (защита от неконсистентных вызовов).
-    // - Если обеспечение жетонами выключено, вызовы от владельца и старого контракта могут корректировать баланс обеспечения
-    //   при наличии отступа в жетонах, уменьшая задолженность supportBalance.
-    // - Для других вызовов (торговля от MarketMaker или разрешённых адресов) применяются ограничения на время lockEndTime,
-    //   проверяется наличие прав в marketMakerAddressesMap, а также контролируются комиссии и балансы.
+    // The logic depends on the support mode (self.jettonSupport) and the sender's address:
+    // - If support with jettons is enabled and the call comes from the owner or the old contract (oldContractAddress),
+    //   it confirms that support is active (to protect from inconsistent calls), and ensures the contract is active and jetton wallets are initialized.
+    // - If support with jettons is disabled, calls from the owner or old contract can adjust the support balance
+    //   if there is a jetton offset, reducing the supportBalance debt.
+    // - For other calls (e.g., trades from MarketMaker or whitelisted addresses), the following checks apply:
+    //   lockEndTime restriction, verification of sender permissions in marketMakerAddressesMap,
+    //   and control of fees and balances.
+    // - Also includes logic to return change (excess funds) to the owner.
     //
-    // Вычисляет количество главного жетона, которое нужно выдать за переданные средства (за вычетом комиссий),
-    // распределяет прибыль между создателем и роялти, обновляет баланс контракта и переводит жетоны отправителю.
+    // Calculates the amount of main jettons to issue for the received funds (after deducting fees),
+    // distributes the profit between the creator and the royalty wallet, and depending on the profit payout mode,
+    // either immediately transfers the profit or accumulates it for later withdrawal.
+    // Then updates the contract balance and sends jettons to the sender.
     //
-    // Требования:
-    // - При включенном обеспечении в жетонах нельзя принимать вызовы от посторонних адресов.
-    // - Комиссия должна быть оплачена полностью.
-    // - Баланс главного жетона должен быть достаточным для выдачи.
-    //
-    // Обновляет внутренний queryId для учёта запросов.
+    // Finally, updates the internal queryId to track the request.
     receive() {
-        if (self.jettonSupport == true && (sender() == self.checkSwitchOwner() || sender() == self.oldContractAddress)) {
+        if (self.jettonSupport == true && (sender() == self.owner || sender() == self.oldContractAddress)) {
             require(self.jettonSupport == true, "Jetton support is not used."); 
         } else {
-            require(self.jettonSupport == false, "Jetton support is used"); // мне кажется тут не хватало такого рекваера
-            let value = context().value - self.commission * 2;
-            if (sender() == self.checkSwitchOwner() || sender() == self.oldContractAddress) {
+            require(self.isActive == true, "Contract is not active");
+            require(self.isInitialized == true, "Contract jetton wallets are not initialized yet");
+            require(self.jettonSupport == false, "Jetton support is used"); // проверяет, что у нас обеспечение именно в TON
+            let value = context().value;
+            if (self.profitInTime == false) {
+                value -= self.commission;
+            } else {
+                value -= self.commission * 3;
+            }
+            if (sender() == self.owner || sender() == self.oldContractAddress) {
                 if (self.offsetJettons - self.jettonsEarned > 0)
                 {
-                    self.contractSupportBalance += self.calculateChangeOffsetSupport(value);
+                    let deltaSupportBalance = self.calculateChangeOffsetSupport(value);
+                    self.contractSupportBalance += deltaSupportBalance;
+                    let change = value - deltaSupportBalance;
+                    if (change > 0) {
+                        send(SendParameters{
+                            to: sender(),
+                            value: change,
+                            bounce: true,
+                            mode: SendPayFwdFeesSeparately,
+                            body: "Send change to owner".asComment()
+                        });
+                    }
                 }
             } else {
-                if (self.lockEndTime - now() > SIXTY_DAYS && self.checkControlDay() != true) {
-                    require(self.marketMakerAddressesMap.get(sender()) != null, "Now can trade only MarketMaker and this address is not a MarketMaker");
-                } else if (self.checkControlDay() == true) {
-                    self.controlDay = now() + SIXTY_DAYS * self.calculatePastPeriods();
-                } else if (now() - self.controlDay - SIXTY_DAYS > self.controlPeriod) {
-                    self.controlDay = now() + SIXTY_DAYS * self.calculatePastPeriods();
+                if (self.checkTradingAccess()) { 
+                    require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
+                } else if (self.checkUnlockWindow()) {
+                    self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
                 }
                 require(value >= self.commission, "Insufficient funds to cover commission");
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
@@ -568,8 +589,25 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                 let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / 10;
                 let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / 10;
 
-                self.ownerTonBalance += creatorProfit;
-                self.royaltyTonBalance += royaltyProfit;
+                if (self.profitInTime == false) {
+                    send(SendParameters{
+                        to: sender(),
+                        value: creatorProfit,
+                        bounce: true,
+                        mode: SendPayFwdFeesSeparately,
+                        body: "Send profit to owner".asComment()
+                    });
+                    send(SendParameters{
+                        to: sender(),
+                        value: royaltyProfit,
+                        bounce: true,
+                        mode: SendPayFwdFeesSeparately,
+                        body: "Send profit to royalty".asComment()
+                    });
+                } else {
+                    self.ownerTonBalance += creatorProfit;
+                    self.royaltyTonBalance += royaltyProfit;
+                }
 
                 let netValue: Int = value - self.actualProfit;
 
@@ -582,77 +620,68 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         }
     }
 
-    // Обработчик входящих уведомлений о переводе Jetton (JettonTransferNotification).
+    // Handler for incoming JettonTransferNotification messages.
     //
-    // Выполняет логику обработки переводов в зависимости от отправителя уведомления и состояния контракта.
+    // Executes logic based on the notification sender and the contract state.
     //
-    // Основные сценарии:
-    // 1. Если уведомление пришло от контракта обеспечения (contractJettonSupportWalletAddress):
-    //    - Проверяется, что обеспечение в жетонах активно и адрес отправителя корректен.
-    //    - Если перевод от владельца (checkSwitchOwner) или старого контракта (oldContractAddress):
-    //      - При наличии положительного отступа в жетонах увеличивается баланс обеспечения контракта и учитываются жетоны обеспечения.
-    //    - Иначе:
-    //      - Проверяется, что отправитель — разрешённый MarketMaker (если период блокировки не истёк).
-    //      - Обновляется контрольный день при необходимости.
-    //      - Проверяется оплата комиссии и достаточность баланса жетонов.
-    //      - Рассчитывается количество жетонов для выдачи, распределяется прибыль создателю и роялти.
-    //      - Обновляется баланс обеспечения и общее количество проданных жетонов.
-    //      - Основные жетоны переводятся отправителю.
-    //      - Обновляется суммарное количество жетонов обеспечения.
-    //    - При ошибках происходит возврат жетонов с комментарием ошибки.
+    // Main scenarios:
+    // 1. If the notification comes from the support jetton wallet (contractJettonSupportWalletAddress):
+    //    - Ensures support mode is active and the sender address is valid.
+    //    - If the transfer is from the owner or oldContractAddress:
+    //      - If a positive offset in support jettons exists, the support balance is increased and the support jettons are accounted for.
+    //    - Otherwise:
+    //      - Verifies the sender is an authorized MarketMaker (depending on lock period or unlock window).
+    //      - Updates the control day if needed.
+    //      - Checks fee payment and sufficient support jetton balance.
+    //      - Calculates the number of main jettons to issue, distributes profit to creator and royalty.
+    //      - Updates the support balance and total sold jettons.
+    //      - Sends main jettons to the sender.
+    //      - Updates the total support jetton amount.
     //
-    // 2. Если уведомление пришло от основного jetton кошелька (contractJettonWalletAddress):
-    //    - Проверяется согласованность состояний jetton (earned и offset).
-    //    - Если перевод от владельца или старого контракта:
-    //      - В зависимости от внутреннего счетчика обновляется баланс jetton или вызывается перерасчёт отступа.
-    //    - Если перевод от returnWalletAddress (обратный выкуп):
-    //      - Проверяется достаточность комиссии.
-    //      - Рассчитывается сумма обеспечения для выплаты в зависимости от выкупаемых жетонов и отступа.
-    //      - Обновляются балансы обеспечения и главного жетона.
-    //      - При необходимости происходит отправка средств на адрес владельца (через отправку TON или перевод jetton).
-    //    - Иначе:
-    //      - Проверяется разрешение для MarketMaker и обновляется контрольный день.
-    //      - Проверяется достаточность средств для выкупа jetton.
-    //      - Рассчитывается количетсво жетонов обеспечения к выплате и обновляются балансы обеспечения и проданных основных жетонов.
-    //      - Выполняется перевод средств обратно пользователю (через TON или jetton в зависимости от режима обеспечения).
-    //      - Обновляется общее количество жетонов обеспечения.
-    //    - При ошибках происходит возврат жетонов с комментарием ошибки.
+    // 2. If the notification comes from the main jetton wallet (contractJettonWalletAddress):
+    //    - Ensures consistency of jetton states (earned and offset).
+    //    - If the transfer is from the owner or oldContractAddress:
+    //      - Depending on the internal counter, updates the main jetton balance or triggers offset recalculation.
+    //    - If the transfer is from returnWalletAddress (buyback):
+    //      - Checks commission sufficiency.
+    //      - Calculates the support amount to be paid based on the amount of jettons being bought back and current offset.
+    //      - Updates support and main jetton balances.
+    //      - If required, sends funds to the owner's address (via TON or jetton transfer).
+    //    - Otherwise:
+    //      - Checks MarketMaker permissions or unlock window conditions.
+    //      - Verifies sufficient funds for jetton buyback.
+    //      - Calculates the amount of support jettons to return and updates support and sold jetton balances.
+    //      - Sends funds back to the user (via TON or jetton, depending on the support mode).
+    //      - Updates the total amount of support jettons.
     //
-    // В случае любой ошибки происходит возврат переведённых жетонов отправителю с указанием причины.
-    //
-    // Требования:
-    // - Контроль доступа к функциям с проверками sender() и msg.sender.
-    // - Проверка достаточности комиссий и балансов.
-    // - Управление состоянием контроля дней, периода блокировки, и обеспечения jetton.
-    // - Управление распределением прибыли и поддержкой.
-    //
-    // Аргументы:
-    // - msg: JettonTransferNotification — структура с информацией о переводе jetton,
-    //        включая адрес отправителя и количество жетонов.
-    //
-    // Побочные эффекты:
-    // - Изменение балансов контракта (contractSupportBalance, ownerSupportBalance, royaltySupportBalance, contractJettonBalance и др.)
-    // - Выполнение переводов jetton и TON с комментариями.
-    // - Обновление внутренних счетчиков и дат контроля.
-    // - Логирование ошибок через возврат jetton с комментариями.
+    // Always checks that the contract is active and initialized, otherwise throws an error.
+    // If any error occurs (while the contract is active and initialized), the transferred jettons are refunded to the sender with a specified reason.
     receive(msg: JettonTransferNotification) {
         let value = context().value;
+        require(self.isInitialized == true, "Contract jetton wallets are not initialized yet");
+        require(self.isActive == true, "Contract is not active");
         if (sender() == self.contractJettonSupportWalletAddress) {
             try {
                 require(self.jettonSupport == true && sender() == self.contractJettonSupportWalletAddress, "Jettons support is not used or notification not from your jetton support wallet!");
-                let increasedCommission = value - self.commission * 2;
-                if (msg.sender == self.checkSwitchOwner() || msg.sender == self.oldContractAddress) {
+                if (self.profitInTime == false) {
+                    require(value >= self.commission * 3, "Insufficient funds to cover commission for transfer support jettons.");
+                } else {
+                    require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
+                }
+                if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
                     if (self.offsetJettons - self.jettonsEarned > 0) {
-                        self.contractSupportBalance += self.calculateChangeOffsetSupport(msg.amount);
-                        self.allSupportTokens += msg.amount; 
+                        let deltaSupportBalance = self.calculateChangeOffsetSupport(msg.amount);
+                        self.contractSupportBalance += deltaSupportBalance;
+                        let change = msg.amount - deltaSupportBalance;
+                        if (change > 0) {
+                            self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), change, "Send change to owner");
+                        }
                     } 
                 } else {
-                    if ((self.lockEndTime - now() > SIXTY_DAYS && self.checkControlDay() != true) || (now() >= self.deferredLock)) {
-                        require(self.marketMakerAddressesMap.get(msg.sender) != null, "Now can trade only MarketMaker and this address is not a MarketMaker");
-                    } else if (self.checkControlDay() == true) {
-                        self.controlDay = now() + SIXTY_DAYS * self.calculatePastPeriods();
-                    } else if (now() - self.controlDay - SIXTY_DAYS > self.controlPeriod) {
-                        self.controlDay = now() + SIXTY_DAYS * self.calculatePastPeriods();
+                    if (self.checkTradingAccess()) {
+                        require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
+                    } else if (self.checkUnlockWindow()) {
+                        self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
                     }
                     require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
                     require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance.");
@@ -662,18 +691,18 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                     let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / 10;
                     let netValue: Int = msg.amount - self.actualProfit;
 
-                    self.ownerSupportBalance += creatorProfit;
-                    self.royaltySupportBalance += royaltyProfit;
-
+                    if (self.profitInTime == false) {
+                        self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), creatorProfit, "Send profit to owner");
+                        self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), royaltyProfit, "Send profit to royalty");
+                    } else {
+                        self.ownerSupportBalance += creatorProfit;
+                        self.royaltySupportBalance += royaltyProfit;
+                    }
+                    
                     self.contractSupportBalance += netValue;
                     self.totalJettonsSold += totalTokens;
 
-                    // self.transferTokensTo(self.contractJettonSupportWalletAddress, self.checkSwitchOwner(), creatorProfit, "Development and Marketing Fund");
-                    // self.transferTokensTo(self.contractJettonSupportWalletAddress, self.royaltyWalletAddress, royaltyProfit, "Royalty");
-
                     self.transferTokensTo(self.contractJettonWalletAddress, msg.sender, totalTokens, "Transfer main jettons");
-
-                    self.allSupportTokens += netValue;
                 }
             } catch (error) {
                 let errorComment: StringBuilder = beginString();
@@ -687,13 +716,13 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                 require(sender() == self.contractJettonWalletAddress, "Notification not from your jetton wallet!"); 
                 require(self.jettonsEarned <= self.totalJettonsSold, "Earned jettons are more than sold!");
                 require(self.offsetJettons <= self.totalJettonsSold, "Offset jettons are more than sold!");
-                if (msg.sender == self.checkSwitchOwner() || msg.sender == self.oldContractAddress) { 
+                if (msg.sender == self.owner || msg.sender == self.oldContractAddress) { 
                     if (self.callJettonsID == 1) {
                         self.contractJettonBalance += msg.amount;
                         self.callJettonsID += 1;
                     } else {
                         if (self.totalJettonsSold == self.offsetJettons && (self.offsetJettons - self.jettonsEarned) >= msg.amount) {
-                            self.calculateChangeOffsetJetton(msg.amount); // нет подсчета главного жетона в целом (?)
+                            self.calculateChangeOffsetJetton(msg.amount); 
                         } else {
                             self.contractJettonBalance += msg.amount;
                         }
@@ -723,28 +752,24 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                     self.contractSupportBalance -= supportAmountToPay;
                     self.contractJettonBalance += amount;
 
-                    //require(supportAmountToPay > 0, "Amount supportAmountToPay must be greater than 0");
                     if (supportAmountToPay > 0) {
                         if (self.jettonSupport == false) {
                             send(SendParameters{
-                                to: self.checkSwitchOwner(),
+                                to: self.owner,
                                 value: supportAmountToPay,
                                 bounce: true,
                                 mode: SendPayFwdFeesSeparately,
                                 body: "Price Growth Buyback".asComment()
                             });
                         } else {
-                            self.transferTokensTo(self.contractJettonSupportWalletAddress, self.checkSwitchOwner(), supportAmountToPay, "Price Growth Buyback");
+                            self.transferTokensTo(self.contractJettonSupportWalletAddress, self.owner, supportAmountToPay, "Price Growth Buyback");
                         }
                     }
-                    self.allSupportTokens -= supportAmountToPay;
                 } else {
-                    if ((self.lockEndTime - now() > SIXTY_DAYS && self.checkControlDay() != true) || (now() >= self.deferredLock)) {
-                        require(self.marketMakerAddressesMap.get(msg.sender) != null, "Now can trade only MarketMaker and this address is not a MarketMaker");
-                    } else if (self.checkControlDay() == true) {
-                        self.controlDay = now() + SIXTY_DAYS * self.calculatePastPeriods();
-                    } else if (now() - self.controlDay - SIXTY_DAYS > self.controlPeriod) {
-                        self.controlDay = now() + SIXTY_DAYS * self.calculatePastPeriods();
+                    if (self.checkTradingAccess()) {
+                        require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
+                    } else if (self.checkUnlockWindow()) {
+                        self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
                     }
                     require(value > self.commission, "Amount must be greater than minimal");
                     let tokensAvailableForBuyback: Int = self.totalJettonsSold - max(self.offsetJettons, self.jettonsEarned);
@@ -764,6 +789,9 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                         self.totalJettonsSold -= tokenForBuyback;
                     }
 
+                    require(self.contractSupportBalance >= supportAmountToPay, "Not enough support balance");
+                    require(self.totalJettonsSold >= tokenForBuyback, "Not enough sold jettons to buy back");
+
                     if (self.jettonSupport == false) {
                         send(SendParameters{
                             to: msg.sender,
@@ -775,7 +803,6 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                     } else {
                         self.transferTokensTo(self.contractJettonSupportWalletAddress, msg.sender, supportAmountToPay, "Support Buyback");
                     }
-                    self.allSupportTokens -= supportAmountToPay;
                 }
             } catch(error) {
                 let errorComment: StringBuilder = beginString();
@@ -787,11 +814,11 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         }
     }
 
-    // Выводит все нераспроданные жетоны владельцу после окончания блокировки.
-    // Проверяет право вызова и время блокировки.
-    // Сбрасывает состояние контракта в начальные параметры.
+    // Transfers all unsold jettons to the owner after the lock period ends.
+    // Verifies caller's permission and lock time.
+    // Resets the contract state to initial parameters.
     receive(msg: WithdrawAllCoins) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
+        require(sender() == self.owner, "Access is only for primary owner");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         self.transferTokensTo(self.contractJettonWalletAddress, sender(), self.contractJettonBalance - self.totalJettonsSold, "Transfer all main jettons to owner");
         self.currentStep = 0;
@@ -807,39 +834,38 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         self.currentPriceEarned = self.initialPricePerToken;
     }
 
-    // Выводит весь баланс жетонов обеспечения владельцу после окончания блокировки.
-    // Проверяет право вызова, время блокировки и режим обеспечения.
-    // Обнуляет баланс обеспечения после перевода.
+    // Transfers the entire support jetton balance to the owner after the lock period ends.
+    // Verifies caller's permission, lock time, and support mode.
+    // Resets the support balance after the transfer.
     receive(msg: WithdrawAllSupportCoins) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
+        require(sender() == self.owner, "Access is only for primary owner");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(self.jettonSupport == true, "Jetton support is not used.");
-        self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), self.allSupportTokens, "Send all support balance to owner.");
-        self.allSupportTokens = 0;
+        self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), self.contractSupportBalance, "Send all support balance to owner.");
+        self.contractSupportBalance = 0;
     }
 
-    // Переводит весь доступный TON баланс владельцу после окончания блокировки.
-    // Проверяет права вызова и время блокировки.
-    // Обнуляет баланс обеспечения и обновляет баланс TON для комиссии.
+    // Transfers the entire available TON balance to the owner after the lock period ends.
+    // Verifies caller's permission and lock time.
+    // Resets the support balance and updates the TON balance used for fees.
     receive(msg: WithdrawAllTons) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
+        require(sender() == self.owner, "Access is only for primary owner");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         let amount: Int = myBalance() - context().value - self.commission;
         send(SendParameters{
-            to: self.checkSwitchOwner(),
+            to: self.owner,
             value: amount,
             mode: SendIgnoreErrors | SendRemainingValue,
             bounce: true,
             body: "Send all balance to owner".asComment()
         });
         self.contractSupportBalance = 0;
-        self.contractTonForCommissionBalance = myBalance();
     }
 
-    // Отправляет неиспользованные TON владельцу.
-    // Учитывает режим обеспечения и вычитает комиссию.
+    // Sends unused TON to the owner.
+    // Takes into account the support mode and deducts the fee.
     receive(msg: WithdrawUnusedTons) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
+        require(sender() == self.owner, "Access is only for primary owner");
         let unusedTonToWithdraw: Int = 0; 
         if (self.jettonSupport == false) {
             unusedTonToWithdraw = myBalance() - self.contractSupportBalance - (self.commission * COMMISSION_MULTIPLIER);
@@ -847,7 +873,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             unusedTonToWithdraw = myBalance() - (self.commission * COMMISSION_MULTIPLIER);
         }
         send(SendParameters{
-            to: self.checkSwitchOwner(),
+            to: self.owner,
             value: unusedTonToWithdraw,
             mode: SendPayFwdFeesSeparately | SendBounceIfActionFail,
             bounce: true,
@@ -855,20 +881,10 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         });
     }
 
-    // Отправляет владельцу неиспользованные жетоны обеспечения.
-    // Проверяет, что режим обеспечения в жетонах включен.
-    receive(msg: WithdrawUnusedSupportCoins) {
-        require(sender() == self.checkSwitchOwner(), "Access is only for primary owner or reserve owner");
-        require(self.jettonSupport == true, "Jetton support is used.");
-        let unusedSupportToWithdraw: Int = self.allSupportTokens - self.contractSupportBalance;
-        self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), unusedSupportToWithdraw, "Send unused  tokens to owner.");
-    }
-
-    // Отправляет прибыль текущему владельцу или роялти-кошельку в зависимости от права запроса.
-    // Учёт жетонов обеспечения при отправке прибыли.
+    // Sends profit to the current owner or the royalty wallet depending on the requester's rights.
     receive(msg: GetProfitOnRequest) {
-        require(sender() == self.checkSwitchProfit(), "Access is only for current owner or royalty wallet");
-        if (self.profitSelectorOwner == true) {
+        require(self.profitInTime == false, "Mode profitInTime is active, you do not need to ask withdrawal");
+        if (sender() == self.owner()) {
             if (self.jettonSupport == false) {
                 send(SendParameters{
                     to: sender(),
@@ -883,6 +899,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                 self.ownerSupportBalance = 0;
             }
         } else {
+            require(sender() == self.royaltyWalletAddress, "Access is only for current owner or royalty wallet");
             if (self.jettonSupport == false) {
                 send(SendParameters{
                     to: sender(),
@@ -899,38 +916,20 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         }
     }
 
-    // Отправляет отправителю данные о времени окончания блокировки и отложенных выводах.
+    // Sends the sender information about the lock end time and deferred withdrawals.
     receive("check lock") {
         send(SendParameters{
             to: sender(),
             value: self.commission,
-            body: GetLockEndTime{ lockEndTime: self.lockEndTime, mainJettonDeferredWTHDate: self.mainJettonDeferredWTHDate, supportJettonDeferredWTHDate: self.supportJettonDeferredWTHDate }.toCell()});
+            body: GetLockEndTime{ lockEndTime: self.lockEndTime, mainJettonDeferredWTHDate: self.mainJettonDeferredWithdrawalDate, supportJettonDeferredWTHDate: self.supportJettonDeferredWithdrawalDate }.toCell()});
     }
 
-    // Возвращает адрес текущего владельца: если switchOwner равен 0 — основной владелец, иначе резервный.
-    fun checkSwitchOwner(): Address {
-        if (self.switchOwner == 0) {
-            return self.owner;
-        } else {
-            return self.reserveOwner;
-        }
-    }
-
-    // Возвращает адрес для получения прибыли: если profitSelectorOwner=true — владелец, иначе адрес роялти.
-    fun checkSwitchProfit(): Address {
-        if (self.profitSelectorOwner == true) {
-            return self.checkSwitchOwner();
-        } else {
-            return self.royaltyWalletAddress;
-        }
-    }
-
-    // Вычисляет количество полных 60-дневных периодов, прошедших с controlDay.
+    // Calculates the number of full 60-day periods elapsed since controlDay.
     fun calculatePastPeriods(): Int {
         return (now() - self.controlDay) / SIXTY_DAYS;
     }
 
-    // Проверяет, находится ли текущее время в пределах контролируемого периода после controlDay.
+    // Checks if the current time is within the controlled period after controlDay.
     fun checkControlDay(): Bool {
         if (now() - self.controlDay > SIXTY_DAYS && (now() - self.controlDay - SIXTY_DAYS) < self.controlPeriod) {
             return true;
@@ -939,7 +938,17 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         }
     }
 
-    // Отправляет указанное количество жетонов с комментарием на заданный адрес.
+    // Helper function to check if the caller is allowed to trade at the current moment.
+    fun checkTradingAccess(): Bool {
+        return (self.lockEndTime - now() > SIXTY_DAYS && self.checkControlDay() != true) || (self.mainJettonDeferredWithdrawalDate > 0) || (self.mainJettonDeferredWithdrawalDate > 0);
+    }
+
+    // Helper function to check if the current time is within the "unlock window" period after the lock expires.
+    fun checkUnlockWindow(): Bool {
+        return (now() - self.controlDay - SIXTY_DAYS > self.controlPeriod);
+    }
+
+    // Sends the specified amount of jettons with a comment to the given address.
     fun transferTokensTo(toAddress: Address, recipient: Address, amount: Int, comment: String) {
         let textComment: StringBuilder = beginString();
         textComment.append(comment);
@@ -964,16 +973,16 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         });
     }
 
-    // Возвращает процент прибыли в зависимости от текущего шага и шага изменения тренда.
-    fun calculateProfit(currentStep: Int, trendChangeStep: Int): Int {
-        if (currentStep > trendChangeStep) {
+    // Returns the profit percentage depending on the current step and the trend change step.
+    fun calculateProfit(currentStep: Int): Int {
+        if (currentStep > self.trendChangeStep) {
             return self.profitPercentage;
         } else {
             return self.profitPercentage * 2;
         }
     }
 
-    // Рассчитывает количество жетонов за уровень с учётом текущего шага и множителей.
+    // Calculates the number of tokens per level taking into account the current step and multipliers.
     fun calculateJettonsPerLevel(jettonsPerLevel: Int, currentStep: Int): Int {
         if (currentStep > self.trendChangeStep) {
             return (jettonsPerLevel * (1000 - self.levelDecreaseMultiplierafterTrend)) / 1000;
@@ -982,24 +991,18 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         }
     }
 
-    // Рассчитывает смещение (offset) для заданного количества жетонов, обновляя состояние шага, 
-    // остатка в шаге, размера шага и текущей цены.
+    // Calculates the offset for a given amount of tokens, updating the step state, 
+    // step remainder, step size, and current price.
     //
-    // Логика:
-    // - Вычисляет, сколько жетонов можно распределить на текущем шаге (remainderOfStep).
-    // - Если количество жетонов превышает остаток шага, переходит к следующему шагу:
-    //   - Увеличивает номер шага.
-    //   - Пересчитывает количество жетонов за уровень с учётом шага.
-    //   - Увеличивает цену с использованием множителя прироста.
-    // - Если жетонов меньше или ровно остатку шага, уменьшает остаток шага на это количество.
-    // - Обновляет глобальные переменные контракта по текущему шагу, цене, количеству жетонов и балансу.
-    //
-    // Параметры:
-    // - amountJettons: количество жетонов для распределения.
-    //
-    // Возвращает:
-    // - 0 (всегда).
-    fun calculateOffset(amountJettons: Int): Int {
+    // Logic:
+    // - Calculates how many tokens can be distributed at the current step (remainderOfStep).
+    // - If the amount of tokens exceeds the step remainder, moves to the next step:
+    //   - Increments the step number.
+    //   - Recalculates the number of tokens per level for the new step.
+    //   - Increases the price using the increment multiplier.
+    // - If the tokens are less than or equal to the step remainder, decreases the remainder by this amount.
+    // - Updates global contract variables for the current step, price, token quantity, and balance.
+    fun calculateOffset(amountJettons: Int) {
         let remainingOffsetJettons: Int = amountJettons;                    
         let localCurrentStep: Int = self.offsetStep;     
         let remainderOfStep: Int = self.remainderOffsetJettons;  
@@ -1034,24 +1037,21 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         self.remainderOfStep = remainderOfStep;
         self.contractJettonBalance = amountJettons;
         self.totalJettonsSold = amountJettons;
-        return 0;
     }
     
-    // Рассчитывает изменение смещения (offset) для обеспечения (support) по заданному объему обеспечения,
-    // обновляя внутреннее состояние смещения и шага.
+    // Calculates the offset change for support based on the given support amount,
+    // updating the internal offset and step state.
     //
-    // Логика:
-    // - Итерируется по оставшемуся объему обеспечения и доступным жетонам смещения.
-    // - Для каждого шага вычисляет доступное количество жетонов, прибыльный процент и реальную стоимость обеспечения.
-    // - Если оставшаяся поддержка и жетоны покрывают весь шаг, уменьшает остаток и шаг, корректирует параметры шага и цены.
-    // - Если поддержка меньше полной стоимости шага, частично распределяет жетоны и корректирует остатки.
-    // - Обновляет текущие параметры шага, цены и остатка смещения.
+    // Logic:
+    // - Iterates over the remaining support amount and available offset tokens.
+    // - For each step, calculates the available number of tokens, profit percentage, and actual support cost.
+    // - If the remaining support and tokens cover the entire step, decreases the remainder and step count,
+    //   adjusts step parameters and price.
+    // - If the support is less than the full step cost, distributes tokens partially and updates remainders.
+    // - Updates the current step, price, and offset remainder parameters.
     //
-    // Параметры:
-    // - amountSupport: объем обеспечения, который нужно распределить.
-    //
-    // Возвращает:
-    // - Количество обеспечения, успешно распределенное по шагам.
+    // Returns:
+    // - The amount of support successfully distributed across steps.
     fun calculateChangeOffsetSupport(amountSupport: Int): Int {
         let remainingAddSupport: Int = amountSupport;
         let remainingOffsetJettons: Int = self.offsetJettons;
@@ -1063,7 +1063,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
 
         while (remainingAddSupport > 0 && remainingAddJettons > 0) {
             let tokensAvailableInStep: Int = jettonsPerLevel - remainderOfStep;
-            let profitPercentage: Int = self.calculateProfit(localCurrentStep, self.trendChangeStep);
+            let profitPercentage: Int = self.calculateProfit(localCurrentStep);
             let tonInStep: Int = tokensAvailableInStep * currentPrice / 1000000000;
             let tonRealInStep: Int = tonInStep * (1000 - profitPercentage) / 1000;
 
@@ -1120,23 +1120,20 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return (amountSupport - remainingAddSupport);
     }
 
-    // Обновляет смещение (offset) для заданного количества добавленных жетонов,
-    // корректируя текущий шаг, остаток и цену.
+    // Updates the offset for a given amount of added tokens,
+    // adjusting the current step, remainder, and price.
     //
-    // Основные шаги:
-    // - Итерирует по оставшемуся количеству жетонов для добавления.
-    // - Для каждого шага вычисляет доступное количество жетонов.
-    // - Если добавляемых жетонов достаточно для заполнения шага, уменьшает остаток,
-    //   обновляет параметры шага и цены в зависимости от текущего уровня.
-    // - Если жетонов меньше, частично увеличивает остаток шага.
-    // - Обновляет глобальные параметры смещения и текущего шага.
-    // - Уменьшает общее количество проданных жетонов на добавленное количество.
+    // Main steps:
+    // - Iterates over the remaining amount of tokens to be added.
+    // - For each step, calculates the available number of tokens.
+    // - If the added tokens are enough to fill the step, decreases the remainder,
+    //   and updates step parameters and price based on the current level.
+    // - If the tokens are not enough, partially increases the step remainder.
+    // - Updates global offset parameters and the current step.
+    // - Decreases the total number of sold tokens by the added amount.
     //
-    // Параметры:
-    // - amountJetton: количество жетонов для обработки.
-    //
-    // Возвращает:
-    // - Текущий шаг после перерасчёта.
+    // Returns:
+    // - The current step after recalculation.
     fun calculateChangeOffsetJetton(amountJetton: Int): Int {
         let remainingAddJettons: Int = amountJetton;
         let localCurrentStep: Int = self.offsetStep;     
@@ -1190,24 +1187,26 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return localCurrentStep;
     }
 
-    // Рассчитывает количество жетонов, которые необходимо выдать за заданную сумму обеспечения.
+    // Calculates the number of tokens to be issued for a given support amount.
     //
-    // Алгоритм:
-    // - Инициализирует локальные переменные для текущего шага, остатка, количества жетонов на уровне и цены.
-    // - В цикле пока осталась сумма обеспечения и доступно жетонов для выдачи:
-    //   - Определяет доступное количество жетонов на текущем шаге и необходимую сумму TON для их покупки.
-    //   - Если обеспечения хватает для полного шага:
-    //     - Увеличивает количество выдаваемых жетонов на весь шаг.
-    //     - Рассчитывает и аккумулирует прибыль за этот шаг.
-    //     - Переходит к следующему шагу, пересчитывая жетоны на уровень и цену.
-    //   - Если обеспечения недостаточно для полного шага:
-    //     - Рассчитывает сколько жетонов можно купить на остаток обеспечения.
-    //     - Добавляет их к общему количеству для выдачи.
-    //     - Рассчитывает и добавляет прибыль за этот частичный шаг.
-    //     - Обнуляет остаток обеспечения и корректирует остаток жетонов на шаге.
-    // - Если запрошено больше жетонов, чем доступно, ограничивает выдачу максимальным остатком.
-    // - Обновляет состояние смещения, текущего шага, цены и прибыли.
-    // - Возвращает количество жетонов для выдачи.
+    // Logic:
+    // - Initializes local variables for the current step, remainder, tokens per level, and price.
+    // - In a loop, while there is remaining support and tokens available to issue:
+    //   - Determines the available number of tokens at the current step and the required TON amount to purchase them.
+    //   - If the support is sufficient for a full step:
+    //     - Increases the number of tokens to issue by the full step amount.
+    //     - Calculates and accumulates profit for that step.
+    //     - Moves to the next step, recalculating tokens per level and price.
+    //   - If the support is insufficient for a full step:
+    //     - Calculates how many tokens can be bought with the remaining support.
+    //     - Adds them to the total number to be issued.
+    //     - Calculates and adds profit for this partial step.
+    //     - Sets the remaining support to zero and adjusts the step remainder.
+    // - If more tokens are requested than available, limits issuance to the maximum remaining.
+    // - Updates offset state, current step, price, and profit.
+    //
+    // Returns:
+    // - The number of tokens to be issued.
     fun calculateJettonsToGiveForSupportAmount(supportAmount: Int): Int {
         let jettonsToGive: Int = 0;
         let remainingSupportAmount: Int = supportAmount;
@@ -1224,7 +1223,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
 
             if (remainingSupportAmount >= tonRequiredForStep) {
                 jettonsToGive += tokensAvailableInStep;
-                let profitPercentage: Int = self.calculateProfit(localCurrentStep, self.trendChangeStep);
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let profitInStep: Int = (tonRequiredForStep * profitPercentage) / 1000;
 
@@ -1243,7 +1242,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
                 jettonsToGive += tokensToBuyInThisStep;
                 let tonSpentInThisStep: Int = remainingSupportAmount;
 
-                let profitPercentage: Int = self.calculateProfit(localCurrentStep, self.trendChangeStep);
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let profitInStep: Int = (tonSpentInThisStep * profitPercentage) / 1000;
 
@@ -1272,25 +1271,27 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return jettonsToGive;
     }
 
-    // Функция рассчитывает сумму обеспечения (supportAmountToPay), которую нужно заплатить за заданное количество жетонов (tokenAmount).
+    // Calculates the support amount (supportAmountToPay) required to purchase a given number of tokens (tokenAmount).
     //
-    // Логика:
-    // - Используются локальные копии текущего шага, остатка жетонов на шаге, цены и количества жетонов на уровне.
-    // - Пока остались токены для оплаты:
-    //   - Определяется количество доступных жетонов в текущем шаге.
-    //   - Если оставшееся количество жетонов больше или равно доступному шагу:
-    //     - Рассчитывается процент прибыли для текущего шага.
-    //     - Корректируется цена с учетом прибыли.
-    //     - Рассчитывается сумма обеспечения за полный шаг и прибавляется к общей сумме оплаты.
-    //     - Уменьшается оставшееся количество жетонов для оплаты.
-    //     - Обновляются параметры уровня и цены при переходе на новый шаг.
-    //     - Корректируется шаг и остаток жетонов на шаге в зависимости от текущего состояния.
-    //   - Если жетонов меньше, чем доступно в шаге:
-    //     - Аналогично рассчитывается сумма обеспечения за частичное количество жетонов.
-    //     - Обновляется остаток жетонов на шаге.
-    //     - Все токены оплачены — цикл завершается.
-    // - Обновляет состояние контракта: текущий шаг, количество жетонов на уровне, текущую цену и остаток.
-    // - Возвращает итоговую сумму обеспечения, которую нужно заплатить.
+    // Logic:
+    // - Uses local copies of the current step, step token remainder, price, and tokens per level.
+    // - While there are tokens left to pay for:
+    //   - Determines the number of tokens available at the current step.
+    //   - If the remaining token amount is greater than or equal to the available tokens in the step:
+    //     - Calculates the profit percentage for the current step.
+    //     - Adjusts the price with the profit.
+    //     - Calculates the support amount for the full step and adds it to the total payment.
+    //     - Reduces the remaining token amount.
+    //     - Updates level parameters and price when transitioning to a new step.
+    //     - Adjusts the step and step token remainder based on the current state.
+    //   - If the token amount is less than the available tokens in the step:
+    //     - Calculates the support amount for the partial token quantity similarly.
+    //     - Updates the step token remainder.
+    //     - All tokens are paid — the loop ends.
+    // - Updates the contract state: current step, tokens per level, current price, and remainder.
+    //
+    // Returns:
+    // - The total support amount to be paid.
     fun calculateSupportToPayForTokenAmount(tokenAmount: Int): Int {
         let supportAmountToPay: Int = 0;
         let remainingJettonAmount: Int = tokenAmount;
@@ -1303,7 +1304,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             let tokensAvailableInStep: Int = jettonsPerLevel - remainderOfStep;
 
             if (remainingJettonAmount >= tokensAvailableInStep) {
-                let profitPercentage: Int = self.calculateProfit(localCurrentStep, self.trendChangeStep);
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
 
                 let adjustedPrice: Int = currentPrice * (1000 - profitPercentage) / 1000;
@@ -1331,7 +1332,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
 
                 
             } else {
-                let profitPercentage: Int = self.calculateProfit(localCurrentStep, self.trendChangeStep);
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (1000 - profitPercentage) / 1000;
                 let supportToPayForStep: Int = remainingJettonAmount * adjustedPrice / 1000000000;
@@ -1355,27 +1356,29 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return supportAmountToPay;
     }
 
-    // Функция рассчитывает сумму обеспечения (supportAmountToPay), которую нужно выплатить за заданное количество заработанных жетонов (tokenAmount).
+    // Calculates the support amount (supportAmountToPay) required to be paid for a given number of earned tokens (tokenAmount).
     //
-    // Логика:
-    // - Используются локальные копии текущего заработанного шага, остатка жетонов на шаге, цены и количества жетонов на уровне.
-    // - Пока остались токены для оплаты и текущий шаг не превышает максимальный шаг:
-    //   - Определяется количество жетонов, доступных в текущем шаге (остаток).
-    //   - Если оставшееся количество жетонов больше или равно доступному остатку:
-    //     - Рассчитывается процент прибыли для текущего шага.
-    //     - Корректируется цена с учетом прибыли.
-    //     - Рассчитывается сумма обеспечения за полный остаток и прибавляется к общей сумме оплаты.
-    //     - Переходим к следующему шагу.
-    //     - Обновляем количество жетонов на уровне (jettonsPerLevel) через вызов функции calculateJettonsPerLevel.
-    //     - Устанавливаем новый остаток равным количеству жетонов на уровне.
-    //     - Уменьшаем оставшееся количество жетонов для оплаты.
-    //     - Обновляем текущую цену с учетом прироста.
-    //   - Если жетонов осталось меньше, чем доступно в остатке:
-    //     - Аналогично рассчитываем сумму обеспечения за частичное количество жетонов.
-    //     - Обновляем остаток, уменьшая его на оплаченные токены.
-    //     - Завершаем цикл (все токены оплачены).
-    // - После выхода из цикла обновляем состояние контракта (текущий заработанный шаг, количество жетонов на уровне, текущую цену и остаток).
-    // - Возвращаем итоговую сумму обеспечения.
+    // Logic:
+    // - Uses local copies of the current earned step, step token remainder, price, and tokens per level.
+    // - While there are tokens left to pay for and the current step does not exceed the maximum step:
+    //   - Determines the number of tokens available at the current step (remainder).
+    //   - If the remaining token amount is greater than or equal to the available remainder:
+    //     - Calculates the profit percentage for the current step.
+    //     - Adjusts the price including the profit.
+    //     - Calculates the support amount for the full remainder and adds it to the total payment.
+    //     - Proceeds to the next step.
+    //     - Updates the number of tokens per level (jettonsPerLevel) using the calculateJettonsPerLevel function.
+    //     - Sets the new remainder to the updated tokens per level.
+    //     - Decreases the remaining token amount.
+    //     - Updates the current price using the increment multiplier.
+    //   - If fewer tokens remain than available in the remainder:
+    //     - Similarly calculates the support amount for the partial token quantity.
+    //     - Updates the remainder by subtracting the paid tokens.
+    //     - Ends the loop (all tokens are paid).
+    // - After the loop, updates the contract state (current earned step, tokens per level, current price, and remainder).
+    //
+    // Returns:
+    // - The total support amount to be paid.
     fun calculateSupportForTokenAmountEarned(tokenAmount: Int): Int {
         let supportAmountToPay: Int = 0;
         let remainingJettonAmount: Int = tokenAmount;
@@ -1388,7 +1391,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
             let tokensAvailableInStep: Int = remainderOfStep;
 
             if (remainingJettonAmount >= tokensAvailableInStep) {
-                let profitPercentage: Int = self.calculateProfit(localCurrentStep, self.trendChangeStep);
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (1000 - profitPercentage) / 1000;
                 let supportToPayForStep: Int = tokensAvailableInStep * adjustedPrice / 1000000000;
@@ -1402,7 +1405,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
 
                 currentPrice = currentPrice * (1000 + self.priceIncrementMultiplier) / 1000;
             } else {
-                let profitPercentage: Int = self.calculateProfit(localCurrentStep, self.trendChangeStep);
+                let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (1000 - profitPercentage) / 1000;
 
@@ -1476,7 +1479,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
     }
 
     get fun check_market_maker_address(address: Address): String {
-        if (self.marketMakerAddressesMap.get(address) == null) {
+        if (!self.marketMakerAddressesMap.exists(address)) {
             return "not found";
         } else {
             let addr: String = address.toString();
@@ -1489,16 +1492,8 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         }
     }
 
-    get fun date_deferred_withdrawal(): Int {
-        return self.deferredLock;
-    }
-
-    get fun recipient_deferred_withdrawal(): Address {
-        return self.recipientDeferredLock;
-    }
-
     get fun check_switch_profit(): Bool {
-        return self.profitSelectorOwner;
+        return self.profitInTime;
     }
 
     get fun check_owner_profit(): Int {
@@ -1518,7 +1513,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
     }
 
     get fun check_quantity_market_makers(): Int {
-        return self.markerMakerIndex;
+        return self.marketMakerAddressesLength;
     }
 
     get fun return_wallet_address(): Address {
@@ -1531,14 +1526,6 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
 
     get fun reserve_owner_address(): Address {
         return self.reserveOwner;
-    }
-
-    get fun check_switch_owner(): Bool {
-        return self.checkSwitchOwner() == self.owner;
-    }
-
-    get fun check_switch_value(): Int {
-        return self.switchOwner;
     }
 
     get fun jetton_wallet_address(): Address {
@@ -1589,11 +1576,6 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return unused_amount;
     }
 
-    get fun unused_support_tokens(): Int {
-        let unused_amount: Int = self.allSupportTokens - self.contractSupportBalance;
-        return unused_amount;
-    }
-
     get fun control_day(): Int {
         return self.controlDay;
     }
@@ -1602,7 +1584,7 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return self.controlPeriod;
     }
 
-    get fun current_comission(): Int {
+    get fun current_commission(): Int {
         return self.commission;
     }
 
@@ -1630,11 +1612,6 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return self.callJettonsID;
     }
 
-    get fun calculate_offset(a: Int): Int { 
-        let b: Int = self.calculateOffset(a);
-        return b;
-    }
-
     get fun calculate_change_offset_support(a: Int): Int {
         let b: Int = self.calculateChangeOffsetSupport(a);
         return b;
@@ -1657,14 +1634,6 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return self.contractJettonSupportWalletAddress;
     }
 
-    get fun contract_ton_for_commission_balance(): Int {
-        return self.contractTonForCommissionBalance;
-    }
-
-    get fun all_support_tokens(): Int {
-        return self.allSupportTokens;
-    }
-
     get fun royalty_profit_percent(): Int {
         return self.royaltyProfitPercent;
     }
@@ -1673,32 +1642,36 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         return self.creatorProfitPercent;
     }
 
-    get fun main_jetton_deffered_WTH_Date(): Int {
-        return self.mainJettonDeferredWTHDate;
+    get fun main_jetton_deferred_WTH_Date(): Int {
+        return self.mainJettonDeferredWithdrawalDate;
     }
 
-    get fun main_jetton_deffered_WTH_Recipient(): Address {
-        return self.recipientDeferredWTHMainJetton;
+    get fun main_jetton_deferred_WTH_Recipient(): Address {
+        return self.recipientDeferredWithdrawalMainJetton;
     }
 
-    get fun main_jetton_deffered_WTH_Amount(): Int {
-        return self.mainJettonDeferredWTHAmount;
+    get fun main_jetton_deferred_WTH_Amount(): Int {
+        return self.mainJettonDeferredWithdrawalAmount;
     }
 
-    get fun support_jetton_deffered_WTH_Date(): Int {
-        return self.supportJettonDeferredWTHDate;
+    get fun support_jetton_deferred_WTH_Date(): Int {
+        return self.supportJettonDeferredWithdrawalDate;
     }
 
-    get fun support_jetton_deffered_WTH_Recipient(): Address {
-        return self.recipientDeferredWTHSupportJetton;
-    }
-
-    get fun support_jetton_deffered_WTH_Amount(): Int {
-        return self.supportJettonDeferredWTHAmount;
+    get fun support_jetton_deferred_WTH_Recipient(): Address {
+        return self.recipientDeferredWithdrawalSupportJetton;
     }
 
     get fun old_contract_address(): Address {
         return self.oldContractAddress;
+    }
+
+    get fun is_active(): Bool {
+        return self.isActive;
+    }
+
+    get fun is_initialized(): Bool {
+        return self.isInitialized;
     }
 
     get fun dates_contract_state(): String {
@@ -1709,8 +1682,6 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         contractState.append(self.controlDay.toString());
         contractState.append("|CP:");
         contractState.append(self.controlPeriod.toString());
-        contractState.append("|DL:");
-        contractState.append(self.deferredLock.toString());
         return contractState.toString();
     }
 
@@ -1741,10 +1712,8 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
         contractState.append(self.jettonSupportMasterAddress.toString());
         contractState.append("|CJSWA:");
         contractState.append(self.contractJettonSupportWalletAddress.toString());
-        contractState.append("|CTFCB:");
-        contractState.append(self.contractTonForCommissionBalance.toCoinsString());
-        contractState.append("|AST:");
-        contractState.append(self.allSupportTokens.toCoinsString());
+        contractState.append("|CSB:");
+        contractState.append(self.contractSupportBalance.toCoinsString());
         return contractState.toString();
     }
 
@@ -1803,24 +1772,18 @@ contract ProofOfCapital with Deployable, OwnableTransferable {
     get fun other_contract_state_values(): String {
         let contractState: StringBuilder = beginString();
         contractState.append("MMI:");
-        contractState.append(self.markerMakerIndex.toString());
-        contractState.append("|SO:");
-        contractState.append(self.switchOwner.toString());
-        contractState.append("|CW:");
-        contractState.append(self.canWithdrawal.toString());
+        contractState.append(self.marketMakerAddressesLength.toString());
         return contractState.toString();
     }
 
     get fun contract_wth_state_values(): String {
         let contractState: StringBuilder = beginString();
         contractState.append("MJDWD:");
-        contractState.append(self.mainJettonDeferredWTHDate.toString());
+        contractState.append(self.mainJettonDeferredWithdrawalDate.toString());
         contractState.append("|MJDWA:");
-        contractState.append(self.mainJettonDeferredWTHAmount.toCoinsString());
+        contractState.append(self.mainJettonDeferredWithdrawalAmount.toCoinsString());
         contractState.append("|SJDD:");
-        contractState.append(self.supportJettonDeferredWTHDate.toString());
-        contractState.append("|SJDWA:");
-        contractState.append(self.supportJettonDeferredWTHAmount.toCoinsString());
+        contractState.append(self.supportJettonDeferredWithdrawalDate.toString());
         return contractState.toString();
     }
 

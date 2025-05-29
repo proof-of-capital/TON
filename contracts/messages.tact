@@ -37,15 +37,6 @@ message(0x595f07bc) JettonBurn {
     customPayload: Cell? = null;
 }
 
-message Withdraw {
-    amount: Int as coins;
-}
-
-
-message ChangeMarketMaker {
-    newMarketMakerAddress: Address;
-}
-
 message ChangeReturnWallet {
     newReturnWalletAddress: Address;
 }
@@ -64,21 +55,19 @@ message AddAdditionalJettonData {
 
 message WithdrawUnusedTons {}
 
-message WithdrawUnusedSupportCoins {}
-
 message ChangeCommissionValue {
     commissionValue: Int as coins;
 }
 
-message AssignReserveOwner {
+message AssignNewOwner {
+    newOwner: Address;
+}
+
+message AssignNewReserveOwner {
     reserveOwner: Address;
 }
 
-message OnSwitchOwner {
-    turnOnValue: Bool;
-}
-
-message SwitchSelectorProfit {
+message SwitchProfitMode {
     flag: Bool;
 }
 
@@ -96,20 +85,11 @@ message DeleteMarketMakerAddresses {
     delMarketMakerAddresse: Address;
 }
 
-message StartDeferredLock {
-    recipientAddress: Address;
-}
-
-message SpecialWithdrawal {
-    amountSupport: Int as coins;
-    amountMainJettons: Int as coins;
-}
-
 message ChangeProfitPercentage {
     newRoyaltyProfitPercentage: Int as uint8;
 }
 
-message BlockSpecialWithdrawal { }
+message BlockDeferredWithdrawal { }
 
 message JettonDeferredWithdrawal {
     amount: Int as coins;
@@ -117,16 +97,21 @@ message JettonDeferredWithdrawal {
 }
 
 message SupportDeferredWithdrawal {
-    amount: Int as coins;
     recipientAddress: Address;
 }
 
-message StopJettonDefWTH { }
-message StopSupportDefWTH { }
+message StopJettonDeferredWithdrawal { }
+message StopSupportDeferredWithdrawal { }
 
-message ConfirmJettonDefWTH { }
-message ConfirmSupportDefWTH { }
+message ConfirmJettonDeferredWithdrawal { }
+message ConfirmSupportDeferredWithdrawal { }
 
 message OldContractAddress {
     oldContractAddress: Address;
+}
+
+message GetLockEndTime {
+    lockEndTime: Int as uint32;
+    mainJettonDeferredWTHDate: Int as uint32;
+    supportJettonDeferredWTHDate: Int as uint32;
 }
