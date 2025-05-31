@@ -24,6 +24,7 @@
 import "@stdlib/deploy";
 import "@stdlib/ownable";
 import "./messages";
+// import "./test_functions";
 
 
 const TWO_YEARS: Int = 63_072_000; // 2 years (used as the maximum lock extension period)
@@ -37,6 +38,7 @@ const COMMISSION_MULTIPLIER: Int = 10; // commission multiplier (used to calcula
 const THREE_WEEKS: Int = 1_814_000; // 3 weeks before the deferred token withdrawal date
 const THIRTY_DAYS: Int = 2_592_000; // 30 days before the deferred withdrawal dates for the primary and backing tokens
 
+
 // Limits the given period to a range between MIN_CONTROL_PERIOD and SIXTY_DAYS.
 fun getPeriod(period: Int): Int {
     if (period < MIN_CONTROL_PERIOD) {
@@ -47,7 +49,7 @@ fun getPeriod(period: Int): Int {
     return period;
 }
 
-contract ProofOfCapital with Deployable, Ownable { 
+contract ProofOfCapital with Deployable, Ownable {
     isActive: Bool = true; // Contract activity flag
     oldContractAddress: Address; // Address of the old contract, from which coins are expected to be transferred to the current contract (messages are treated as if sent by the owner)
 
@@ -80,7 +82,7 @@ contract ProofOfCapital with Deployable, Ownable {
     currentPrice: Int as coins; // Current price of the jetton
     currentStep: Int as coins; // Current step the contract is on
     remainderOfStep: Int as coins; // Remaining jettons at the current step
-    
+
     // Variables for tracking earned jettons
     currentStepEarned: Int as coins; // Current return step the contract is on
     remainderOfStepEarned: Int as coins; // Remaining jettons at the current return step
@@ -115,18 +117,18 @@ contract ProofOfCapital with Deployable, Ownable {
     royaltyTonBalance: Int as coins; // Royalty profit in TON
     ownerSupportBalance: Int as coins; // Owner's profit in support jettons
     royaltySupportBalance: Int as coins; // Royalty profit in support jettons
-    profitInTime: Bool; // Flag indicating whether profit is withdrawn immediately or upon request
+    profitInTime: Bool; // Flag indicating whether profit is withdrawn immediately or upon request (true – on request, false – immediately)
     royaltyProfitPercent: Int as uint8; // Royalty profit percentage (from 1 to 10)
     creatorProfitPercent: Int as uint8; // Owner profit percentage (from 1 to 10)
 
     canWithdrawal: Bool = true; // Flag indicating whether early delayed withdrawal is allowed (true – allowed, false – prohibited)
 
     // Deferred withdrawal
-    mainJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of deferred withdrawal for the main jetton  
-    mainJettonDeferredWithdrawalAmount: Int as coins = 0; // Amount of the main jetton for deferred withdrawal  
-    recipientDeferredWithdrawalMainJetton: Address; // Recipient address for the deferred withdrawal of the main jetton  
+    mainJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of deferred withdrawal for the main jetton
+    mainJettonDeferredWithdrawalAmount: Int as coins = 0; // Amount of the main jetton for deferred withdrawal
+    recipientDeferredWithdrawalMainJetton: Address; // Recipient address for the deferred withdrawal of the main jetton
 
-    supportJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of deferred withdrawal for the support jetton  
+    supportJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of deferred withdrawal for the support jetton
     recipientDeferredWithdrawalSupportJetton: Address; // Recipient address for the deferred withdrawal of the support jetton
 
     isInitialized: Bool = false; // Flag indicating whether the contract's jetton wallets are initialized (required to run self.calculateOffset())
@@ -220,7 +222,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(self.levelDecreaseMultiplierafterTrend < 1000, "Multiplier too high");
         require(self.levelIncreaseMultiplier > -1000, "Multiplier too low");
         require(self.priceIncrementMultiplier > -1000, "Price increment too low");
-        require(self.royaltyProfitPercent > 1, "Started royalty profit cannot be less than two");
+        require(self.royaltyProfitPercent > 1 && self.royaltyProfitPercent < 11, "Started royalty profit cannot be less than two and greater than ten");
 
         send(SendParameters{
             to: self.jettonMasterAddress,
@@ -232,10 +234,10 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Receives and sends messages to jetton master contracts, stores the addresses of the main and support jetton wallets.
     // Change flag isInitialized after all jetton wallets received.
-    // Triggers the offset calculation function.    
+    // Triggers the offset calculation function.
     receive(msg: TakeWalletAddress) {
         require(sender() == self.jettonMasterAddress || sender() == self.jettonSupportMasterAddress, "Invalid main or support jetton master sender");
-        require(self.isInitialized == false, "Contract jetton wallets are already initialized");
+        require(!self.isInitialized, "Contract jetton wallets are already initialized");
         if (sender() == self.jettonMasterAddress) {
             self.contractJettonWalletAddress = msg.wallet_address;
             if (self.jettonSupport) {
@@ -252,18 +254,18 @@ contract ProofOfCapital with Deployable, Ownable {
             self.contractJettonSupportWalletAddress = msg.wallet_address;
         }
         if (self.contractJettonWalletAddress != self.owner && self.contractJettonSupportWalletAddress != self.owner) {
-            self.isInitialized = true;
             self.calculateOffset(self.offsetJettons);
+            self.isInitialized = true;
         }
     }
 
-    // Extends the lock for a specified period at the request of the owner. Supported durations are 10 minutes, 3 months, or 6 months.    
+    // Extends the lock for a specified period at the request of the owner. Supported durations are 10 minutes, 3 months, or 6 months.
     receive(msg: ExtendLock) {
         require(sender() == self.owner, "Access is only for primary owner");
         require(context().value > self.commission, "Amount must be greater than commission");
         require(((self.lockEndTime + msg.additionalTime) - now()) < TWO_YEARS, "Lock end time cannot exceed two years");
         require(msg.additionalTime == HALF_YEAR || msg.additionalTime == TEN_MINUTES || msg.additionalTime == THREE_MONTHS, "Invalid time!");
-        self.lockEndTime += msg.additionalTime;            
+        self.lockEndTime += msg.additionalTime;
         if (msg.additionalTime == HALF_YEAR) {
             send(SendParameters{
                 to: self.owner,
@@ -271,7 +273,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 bounce: true,
                 mode: SendPayFwdFeesSeparately,
                 body: "Lock extended for 182 days.".asComment()
-            });        
+            });
         } else if (msg.additionalTime == TEN_MINUTES) {
             send(SendParameters{
                 to: self.owner,
@@ -279,7 +281,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 bounce: true,
                 mode: SendPayFwdFeesSeparately,
                 body: "Lock extended for 10 minutes.".asComment()
-            }); 
+            });
         } else {
             send(SendParameters{
                 to: self.owner,
@@ -287,14 +289,14 @@ contract ProofOfCapital with Deployable, Ownable {
                 bounce: true,
                 mode: SendPayFwdFeesSeparately,
                 body: "Lock extended for 3 months.".asComment()
-            }); 
+            });
         }
     }
 
     // Locks the ability of the owner to withdraw funds if they want to waive this right during the lock period.
     // If this receiver is called when less than 60 days remain until the end of the lock (i.e., when users can already interact with the contract),
     // the owner can re-enable withdrawal—for example, to transfer jettons to another contract with a lock (for a safe migration).
-    receive(msg: BlockDeferredWithdrawal) { 
+    receive(msg: BlockDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for primary owner");
         if (self.canWithdrawal) {
             self.canWithdrawal = false;
@@ -308,8 +310,9 @@ contract ProofOfCapital with Deployable, Ownable {
     // Schedules a deferred withdrawal of the main jetton in 30 days to the specified address.
     receive(msg: JettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for primary owner");
-        require(msg.recipientAddress != newAddress(0, 0) && msg.amount > 0, "Recipient address and jetton amount cannot be zero"); 
-        require(self.canWithdrawal == true, "Deferred withdrawal is blocked");
+        require(msg.recipientAddress != newAddress(0, 0) && msg.amount > 0, "Recipient address and jetton amount cannot be zero");
+        require(self.canWithdrawal, "Deferred withdrawal is blocked");
+        require(self.mainJettonDeferredWithdrawalAmount == 0, "Main jetton deferred withdrawal is already scheduled");
         self.recipientDeferredWithdrawalMainJetton = msg.recipientAddress;
         self.mainJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
         self.mainJettonDeferredWithdrawalAmount = msg.amount;
@@ -322,7 +325,7 @@ contract ProofOfCapital with Deployable, Ownable {
         });
     }
 
-    // Отменяет отложенный вывод основного жетона и сбрасывает связанные данные. Может вызваться как создателем, так и роялти-кошельком.
+    // Cancels the delayed withdrawal of the main token and resets the associated data. It can be used by both the creator and the royalty wallet.
     receive(msg: StopJettonDeferredWithdrawal) {
         require(sender() == self.owner || sender() == self.royaltyWalletAddress, "Access is only for owner or royaltyWallet");
         require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set");
@@ -335,7 +338,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Cancels the deferred withdrawal of the main jetton and resets the related data. Can be called by either the creator or the royalty wallet.
     receive(msg: ConfirmJettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for primary owner");
-        require(self.canWithdrawal == true, "Deferred withdrawal is blocked");
+        require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set or reset");
         require(now() >= self.mainJettonDeferredWithdrawalDate, "Main jetton deferred withdrawal date is not arrived yet");
         let amountToWithdraw: Int = self.contractJettonBalance < self.mainJettonDeferredWithdrawalAmount ? self.contractJettonBalance : self.mainJettonDeferredWithdrawalAmount;
@@ -349,8 +352,9 @@ contract ProofOfCapital with Deployable, Ownable {
     // Schedules a deferred withdrawal of the support jettons in 30 days to the specified address.
     receive(msg: SupportDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for primary owner");
-        require(self.canWithdrawal == true, "Deferred withdrawal is blocked");
+        require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(msg.recipientAddress != newAddress(0, 0), "Recipient address cannot be null");
+        require(self.supportJettonDeferredWithdrawalDate == 0, "Support jetton deferred withdrawal is already scheduled");
         self.recipientDeferredWithdrawalSupportJetton = msg.recipientAddress;
         self.supportJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
         send(SendParameters{
@@ -372,12 +376,12 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Confirms and executes the deferred withdrawal of support jettons after the waiting period expires.
-    receive(msg: ConfirmSupportDeferredWithdrawal) { 
+    receive(msg: ConfirmSupportDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for primary owner");
-        require(self.canWithdrawal == true, "Deferred withdrawal is blocked");
+        require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.supportJettonDeferredWithdrawalDate != 0, "Support jetton deferred withdrawal date is not set or reset");
         require(now() >= self.supportJettonDeferredWithdrawalDate, "Support jetton deferred withdrawal date is not arrived yet");
-        if (self.jettonSupport == true) {
+        if (self.jettonSupport) {
             self.transferTokensTo(self.contractJettonSupportWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, "Support jetton deferred withdrawal");
         } else {
             send(SendParameters{
@@ -388,21 +392,21 @@ contract ProofOfCapital with Deployable, Ownable {
                 body: "Support jetton deferred withdrawal".asComment()
             });
         }
-        
+
         self.contractSupportBalance = 0;
         self.supportJettonDeferredWithdrawalDate = 0;
         self.recipientDeferredWithdrawalSupportJetton = self.owner;
         self.isActive = false;
     }
 
-    // Assigns a new main owner. Only the current reserve owner can perform this action. 
+    // Assigns a new main owner. Only the current reserve owner can perform this action.
     // If the current owner is the reserve owner, both addresses are updated to the new owner.
     receive(msg: AssignNewOwner) {
         require(sender() == self.reserveOwner, "Only reserve owner can make changes.");
         require(msg.newOwner != newAddress(0, 0), "New owner address cannot be null.");
         if (self.owner == self.reserveOwner) {
             self.owner = msg.newOwner;
-            self.reserveOwner = msg.newOwner; 
+            self.reserveOwner = msg.newOwner;
         } else {
             self.owner = msg.newOwner;
         }
@@ -416,7 +420,7 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Toggles the profit withdrawal mode between immediate and on request.
-    receive(msg: SwitchProfitMode) { 
+    receive(msg: SwitchProfitMode) {
         require(sender() == self.owner, "Access is only for owner");
         require(msg.flag != self.profitInTime, "Turn on value cannot be equal");
         require(context().value >= self.commission * 2, "Amount must be greater than commission");
@@ -440,12 +444,14 @@ contract ProofOfCapital with Deployable, Ownable {
     // Updates the return wallet address.
     receive(msg: ChangeReturnWallet) {
         require(sender() == self.owner, "Access is only for primary owner");
+        require(msg.newReturnWalletAddress != newAddress(0, 0), "New return wallet address cannot be null");
         self.returnWalletAddress = msg.newReturnWalletAddress;
     }
 
     // Updates the royalty wallet address. Access is allowed only to the current royalty address.
     receive(msg: ChangeRoyaltyWallet) {
         require(sender() == self.royaltyWalletAddress, "Access is only for royalty.");
+        require(msg.newRoyaltyWalletAddress != newAddress(0, 0), "New royalty wallet address cannot be null");
         self.royaltyWalletAddress = msg.newRoyaltyWalletAddress;
     }
 
@@ -512,7 +518,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.owner, "Access is only for primary owner");
         require(msg.oldContractAddress != newAddress(0, 0), "Old contract address cannot be zero");
         require(
-            msg.oldContractAddress != self.owner && 
+            msg.oldContractAddress != self.owner &&
             msg.oldContractAddress != self.reserveOwner &&
             msg.oldContractAddress != self.jettonMasterAddress &&
             msg.oldContractAddress != self.contractJettonWalletAddress &&
@@ -548,14 +554,13 @@ contract ProofOfCapital with Deployable, Ownable {
     //
     // Finally, updates the internal queryId to track the request.
     receive() {
-        if (self.jettonSupport == true && (sender() == self.owner || sender() == self.oldContractAddress)) {
-            require(self.jettonSupport == true, "Jetton support is not used."); 
+        if (self.jettonSupport && (sender() == self.owner || sender() == self.oldContractAddress)) {
+            require(self.jettonSupport, "Jetton support is not used.");
         } else {
-            require(self.isActive == true, "Contract is not active");
-            require(self.isInitialized == true, "Contract jetton wallets are not initialized yet");
-            require(self.jettonSupport == false, "Jetton support is used"); // проверяет, что у нас обеспечение именно в TON
+            require(self.isInitialized, "Contract jetton wallets are not initialized yet");
+            require(!self.jettonSupport, "Jetton support is used"); // проверяет, что у нас обеспечение именно в TON
             let value = context().value;
-            if (self.profitInTime == false) {
+            if (!self.profitInTime) {
                 value -= self.commission;
             } else {
                 value -= self.commission * 3;
@@ -577,10 +582,12 @@ contract ProofOfCapital with Deployable, Ownable {
                     }
                 }
             } else {
-                if (self.checkTradingAccess()) { 
+                require(self.isActive, "Contract is not active");
+                if (!self.checkTradingAccess()) {
+                    if (self.checkUnlockWindow()) {
+                        self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
+                    }
                     require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
-                } else if (self.checkUnlockWindow()) {
-                    self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
                 }
                 require(value >= self.commission, "Insufficient funds to cover commission");
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
@@ -589,7 +596,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / 10;
                 let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / 10;
 
-                if (self.profitInTime == false) {
+                if (!self.profitInTime) {
                     send(SendParameters{
                         to: sender(),
                         value: creatorProfit,
@@ -658,12 +665,12 @@ contract ProofOfCapital with Deployable, Ownable {
     // If any error occurs (while the contract is active and initialized), the transferred jettons are refunded to the sender with a specified reason.
     receive(msg: JettonTransferNotification) {
         let value = context().value;
-        require(self.isInitialized == true, "Contract jetton wallets are not initialized yet");
-        require(self.isActive == true, "Contract is not active");
+        require(self.isInitialized, "Contract jetton wallets are not initialized yet");
+        require(self.isActive, "Contract is not active");
         if (sender() == self.contractJettonSupportWalletAddress) {
             try {
-                require(self.jettonSupport == true && sender() == self.contractJettonSupportWalletAddress, "Jettons support is not used or notification not from your jetton support wallet!");
-                if (self.profitInTime == false) {
+                require(self.jettonSupport && sender() == self.contractJettonSupportWalletAddress, "Jettons support is not used or notification not from your jetton support wallet!");
+                if (!self.profitInTime) {
                     require(value >= self.commission * 3, "Insufficient funds to cover commission for transfer support jettons.");
                 } else {
                     require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
@@ -674,14 +681,15 @@ contract ProofOfCapital with Deployable, Ownable {
                         self.contractSupportBalance += deltaSupportBalance;
                         let change = msg.amount - deltaSupportBalance;
                         if (change > 0) {
-                            self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), change, "Send change to owner");
+                            self.transferTokensTo(self.contractJettonSupportWalletAddress, msg.sender, change, "Send change to owner");
                         }
-                    } 
+                    }
                 } else {
-                    if (self.checkTradingAccess()) {
+                    if (!self.checkTradingAccess()) {
+                        if (self.checkUnlockWindow()) {
+                            self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
+                        }
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
-                    } else if (self.checkUnlockWindow()) {
-                        self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
                     }
                     require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
                     require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance.");
@@ -691,14 +699,14 @@ contract ProofOfCapital with Deployable, Ownable {
                     let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / 10;
                     let netValue: Int = msg.amount - self.actualProfit;
 
-                    if (self.profitInTime == false) {
-                        self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), creatorProfit, "Send profit to owner");
-                        self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), royaltyProfit, "Send profit to royalty");
+                    if (!self.profitInTime) {
+                        self.transferTokensTo(self.contractJettonSupportWalletAddress, self.owner, creatorProfit, "Send profit to owner");
+                        self.transferTokensTo(self.contractJettonSupportWalletAddress, self.royaltyWalletAddress, royaltyProfit, "Send profit to royalty");
                     } else {
                         self.ownerSupportBalance += creatorProfit;
                         self.royaltySupportBalance += royaltyProfit;
                     }
-                    
+
                     self.contractSupportBalance += netValue;
                     self.totalJettonsSold += totalTokens;
 
@@ -713,16 +721,16 @@ contract ProofOfCapital with Deployable, Ownable {
             }
         } else {
             try {
-                require(sender() == self.contractJettonWalletAddress, "Notification not from your jetton wallet!"); 
+                require(sender() == self.contractJettonWalletAddress, "Notification not from your jetton wallet!");
                 require(self.jettonsEarned <= self.totalJettonsSold, "Earned jettons are more than sold!");
                 require(self.offsetJettons <= self.totalJettonsSold, "Offset jettons are more than sold!");
-                if (msg.sender == self.owner || msg.sender == self.oldContractAddress) { 
+                if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
                     if (self.callJettonsID == 1) {
                         self.contractJettonBalance += msg.amount;
                         self.callJettonsID += 1;
                     } else {
                         if (self.totalJettonsSold == self.offsetJettons && (self.offsetJettons - self.jettonsEarned) >= msg.amount) {
-                            self.calculateChangeOffsetJetton(msg.amount); 
+                            self.calculateChangeOffsetJetton(msg.amount);
                         } else {
                             self.contractJettonBalance += msg.amount;
                         }
@@ -733,7 +741,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     let supportAmountToPay: Int = 0;
                     let tokensAvailableForReturnBuyback: Int = self.totalJettonsSold - self.jettonsEarned;
                     let effectiveAmount: Int = min(amount, tokensAvailableForReturnBuyback);
-                    
+
                     if (self.offsetJettons > self.jettonsEarned) {
                         if (effectiveAmount > self.offsetJettons - self.jettonsEarned) {
                             self.calculateSupportForTokenAmountEarned(self.offsetJettons - self.jettonsEarned);
@@ -753,7 +761,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     self.contractJettonBalance += amount;
 
                     if (supportAmountToPay > 0) {
-                        if (self.jettonSupport == false) {
+                        if (!self.jettonSupport) {
                             send(SendParameters{
                                 to: self.owner,
                                 value: supportAmountToPay,
@@ -766,33 +774,26 @@ contract ProofOfCapital with Deployable, Ownable {
                         }
                     }
                 } else {
-                    if (self.checkTradingAccess()) {
+                    if (!self.checkTradingAccess()) {
+                        if (self.checkUnlockWindow()) {
+                            self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
+                        }
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
-                    } else if (self.checkUnlockWindow()) {
-                        self.controlDay += SIXTY_DAYS * self.calculatePastPeriods();
                     }
                     require(value > self.commission, "Amount must be greater than minimal");
                     let tokensAvailableForBuyback: Int = self.totalJettonsSold - max(self.offsetJettons, self.jettonsEarned);
                     let tokenForBuyback: Int = msg.amount;
                     require(tokensAvailableForBuyback > 0, "Not have tokensAvailableForBuyback");
-                    require(tokensAvailableForBuyback < tokenForBuyback, "Insufficient tokens available for buyback"); 
+                    require(tokensAvailableForBuyback >= tokenForBuyback, "Insufficient tokens available for buyback");
                     let supportAmountToPay: Int = self.calculateSupportToPayForTokenAmount(tokenForBuyback);
 
-                    if (self.contractSupportBalance - supportAmountToPay < 0) {
-                        self.contractSupportBalance = 0;
-                    } else {
-                        self.contractSupportBalance -= supportAmountToPay;
-                    }
-                    if (self.totalJettonsSold - tokenForBuyback < 0) {
-                        self.totalJettonsSold = 0;
-                    } else {
-                        self.totalJettonsSold -= tokenForBuyback;
-                    }
-
                     require(self.contractSupportBalance >= supportAmountToPay, "Not enough support balance");
-                    require(self.totalJettonsSold >= tokenForBuyback, "Not enough sold jettons to buy back");
+                    require(self.totalJettonsSold >= tokenForBuyback, "Not enough sold jettons to buyback");
 
-                    if (self.jettonSupport == false) {
+                    self.contractSupportBalance -= supportAmountToPay;
+                    self.totalJettonsSold -= tokenForBuyback;
+
+                    if (!self.jettonSupport) {
                         send(SendParameters{
                             to: msg.sender,
                             value: supportAmountToPay,
@@ -840,7 +841,7 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: WithdrawAllSupportCoins) {
         require(sender() == self.owner, "Access is only for primary owner");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
-        require(self.jettonSupport == true, "Jetton support is not used.");
+        require(self.jettonSupport, "Jetton support is not used.");
         self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), self.contractSupportBalance, "Send all support balance to owner.");
         self.contractSupportBalance = 0;
     }
@@ -866,8 +867,8 @@ contract ProofOfCapital with Deployable, Ownable {
     // Takes into account the support mode and deducts the fee.
     receive(msg: WithdrawUnusedTons) {
         require(sender() == self.owner, "Access is only for primary owner");
-        let unusedTonToWithdraw: Int = 0; 
-        if (self.jettonSupport == false) {
+        let unusedTonToWithdraw: Int = 0;
+        if (!self.jettonSupport) {
             unusedTonToWithdraw = myBalance() - self.contractSupportBalance - (self.commission * COMMISSION_MULTIPLIER);
         } else {
             unusedTonToWithdraw = myBalance() - (self.commission * COMMISSION_MULTIPLIER);
@@ -883,9 +884,9 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Sends profit to the current owner or the royalty wallet depending on the requester's rights.
     receive(msg: GetProfitOnRequest) {
-        require(self.profitInTime == false, "Mode profitInTime is active, you do not need to ask withdrawal");
+        require(self.profitInTime, "Mode profitInTime is active, you do not need to ask withdrawal");
         if (sender() == self.owner()) {
-            if (self.jettonSupport == false) {
+            if (!self.jettonSupport) {
                 send(SendParameters{
                     to: sender(),
                     value: self.ownerTonBalance,
@@ -900,7 +901,7 @@ contract ProofOfCapital with Deployable, Ownable {
             }
         } else {
             require(sender() == self.royaltyWalletAddress, "Access is only for current owner or royalty wallet");
-            if (self.jettonSupport == false) {
+            if (!self.jettonSupport) {
                 send(SendParameters{
                     to: sender(),
                     value: self.royaltyTonBalance,
@@ -940,7 +941,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Helper function to check if the caller is allowed to trade at the current moment.
     fun checkTradingAccess(): Bool {
-        return (self.lockEndTime - now() > SIXTY_DAYS && self.checkControlDay() != true) || (self.mainJettonDeferredWithdrawalDate > 0) || (self.mainJettonDeferredWithdrawalDate > 0);
+        return self.checkControlDay() || (self.mainJettonDeferredWithdrawalDate > 0) || (self.supportJettonDeferredWithdrawalDate > 0);
     }
 
     // Helper function to check if the current time is within the "unlock window" period after the lock expires.
@@ -991,7 +992,7 @@ contract ProofOfCapital with Deployable, Ownable {
         }
     }
 
-    // Calculates the offset for a given amount of tokens, updating the step state, 
+    // Calculates the offset for a given amount of tokens, updating the step state,
     // step remainder, step size, and current price.
     //
     // Logic:
@@ -1003,10 +1004,10 @@ contract ProofOfCapital with Deployable, Ownable {
     // - If the tokens are less than or equal to the step remainder, decreases the remainder by this amount.
     // - Updates global contract variables for the current step, price, token quantity, and balance.
     fun calculateOffset(amountJettons: Int) {
-        let remainingOffsetJettons: Int = amountJettons;                    
-        let localCurrentStep: Int = self.offsetStep;     
-        let remainderOfStep: Int = self.remainderOffsetJettons;  
-        let jettonsPerLevel: Int = self.sizeOffsetStep;  
+        let remainingOffsetJettons: Int = amountJettons;
+        let localCurrentStep: Int = self.offsetStep;
+        let remainderOfStep: Int = self.remainderOffsetJettons;
+        let jettonsPerLevel: Int = self.sizeOffsetStep;
         let currentPrice: Int = self.currentPrice;
 
         while (remainingOffsetJettons > 0) {
@@ -1025,7 +1026,7 @@ contract ProofOfCapital with Deployable, Ownable {
             }
         }
 
-        self.offsetStep = localCurrentStep;                
+        self.offsetStep = localCurrentStep;
         self.remainderOffsetJettons = remainderOfStep;
         self.sizeOffsetStep = jettonsPerLevel;
         self.offsetPrice = currentPrice;
@@ -1038,7 +1039,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.contractJettonBalance = amountJettons;
         self.totalJettonsSold = amountJettons;
     }
-    
+
     // Calculates the offset change for support based on the given support amount,
     // updating the internal offset and step state.
     //
@@ -1056,9 +1057,9 @@ contract ProofOfCapital with Deployable, Ownable {
         let remainingAddSupport: Int = amountSupport;
         let remainingOffsetJettons: Int = self.offsetJettons;
         let remainingAddJettons: Int = self.offsetJettons - self.jettonsEarned;
-        let localCurrentStep: Int = self.offsetStep;     
-        let remainderOfStep: Int = self.remainderOffsetJettons;  
-        let jettonsPerLevel: Int = self.sizeOffsetStep;  
+        let localCurrentStep: Int = self.offsetStep;
+        let remainderOfStep: Int = self.remainderOffsetJettons;
+        let jettonsPerLevel: Int = self.sizeOffsetStep;
         let currentPrice: Int = self.offsetPrice;
 
         while (remainingAddSupport > 0 && remainingAddJettons > 0) {
@@ -1096,13 +1097,13 @@ contract ProofOfCapital with Deployable, Ownable {
                 let supportToPayForStep: Int = 0;
                 let tokensToBuyInThisStep: Int = 0;
 
-                
+
                 if (remainingAddSupport >= tonRealInStep) {
                     supportToPayForStep = remainingAddJettons * adjustedPrice / 1000000000;
                     tokensToBuyInThisStep = remainingAddJettons;
                 } else {
                     supportToPayForStep = remainingAddSupport;
-                    tokensToBuyInThisStep = remainingAddSupport * 1000000000 / adjustedPrice; 
+                    tokensToBuyInThisStep = remainingAddSupport * 1000000000 / adjustedPrice;
                 }
                 remainderOfStep += tokensToBuyInThisStep;
                 remainingAddSupport -= supportToPayForStep;
@@ -1111,11 +1112,11 @@ contract ProofOfCapital with Deployable, Ownable {
             }
         }
 
-        self.offsetStep = localCurrentStep;                
-        self.remainderOffsetJettons = remainderOfStep;     
+        self.offsetStep = localCurrentStep;
+        self.remainderOffsetJettons = remainderOfStep;
         self.offsetPrice = currentPrice;
         self.sizeOffsetStep = jettonsPerLevel;
-        self.offsetJettons = remainingOffsetJettons; 
+        self.offsetJettons = remainingOffsetJettons;
 
         return (amountSupport - remainingAddSupport);
     }
@@ -1136,9 +1137,9 @@ contract ProofOfCapital with Deployable, Ownable {
     // - The current step after recalculation.
     fun calculateChangeOffsetJetton(amountJetton: Int): Int {
         let remainingAddJettons: Int = amountJetton;
-        let localCurrentStep: Int = self.offsetStep;     
-        let remainderOfStep: Int = self.remainderOffsetJettons;  
-        let jettonsPerLevel: Int = self.sizeOffsetStep;  
+        let localCurrentStep: Int = self.offsetStep;
+        let remainderOfStep: Int = self.remainderOffsetJettons;
+        let jettonsPerLevel: Int = self.sizeOffsetStep;
         let currentPrice: Int = self.offsetPrice;
 
         while (remainingAddJettons > 0) {
@@ -1171,13 +1172,13 @@ contract ProofOfCapital with Deployable, Ownable {
             }
         }
 
-        self.offsetStep = localCurrentStep;                
-        self.remainderOffsetJettons = remainderOfStep;     
+        self.offsetStep = localCurrentStep;
+        self.remainderOffsetJettons = remainderOfStep;
         self.offsetPrice = currentPrice;
         self.sizeOffsetStep = jettonsPerLevel;
 
         self.offsetJettons -= amountJetton;
-        
+
         self.currentStep = localCurrentStep;
         self.quantityJettonsPerLevel = jettonsPerLevel;
         self.currentPrice = currentPrice;
@@ -1232,7 +1233,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 remainingSupportAmount -= tonRequiredForStep;
 
                 localCurrentStep += 1;
-                
+
                 jettonsPerLevel = self.calculateJettonsPerLevel(jettonsPerLevel, localCurrentStep);
 
                 remainderOfStep = jettonsPerLevel;
@@ -1312,7 +1313,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 supportAmountToPay += supportToPayForStep;
 
                 remainingJettonAmount -= tokensAvailableInStep;
-                
+
                 if (localCurrentStep > self.currentStepEarned) {
                     if (localCurrentStep > self.trendChangeStep) {
                         jettonsPerLevel = jettonsPerLevel * 1000 / (1000 - self.levelDecreaseMultiplierafterTrend);
@@ -1330,7 +1331,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     remainingJettonAmount = 0;
                 }
 
-                
+
             } else {
                 let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
@@ -1497,7 +1498,7 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     get fun check_owner_profit(): Int {
-        if (self.jettonSupport == false) {
+        if (!self.jettonSupport) {
             return self.ownerTonBalance;
         } else {
             return self.ownerSupportBalance;
@@ -1505,7 +1506,7 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     get fun check_royalty_profit(): Int {
-        if (self.jettonSupport == false) {
+        if (!self.jettonSupport) {
             return self.royaltyTonBalance;
         } else {
             return self.royaltySupportBalance;
@@ -1617,7 +1618,7 @@ contract ProofOfCapital with Deployable, Ownable {
         return b;
     }
 
-    get fun calculate_change_offset_jetton(a: Int): Int { 
+    get fun calculate_change_offset_jetton(a: Int): Int {
         let b: Int = self.calculateChangeOffsetJetton(a);
         return b;
     }
@@ -1674,6 +1675,14 @@ contract ProofOfCapital with Deployable, Ownable {
         return self.isInitialized;
     }
 
+    get fun check_trading_access(): Bool {
+        return self.checkTradingAccess();
+    }
+
+    get fun check_current_unlock_window(): Bool {
+        return self.checkUnlockWindow();
+    }
+
     get fun dates_contract_state(): String {
         let contractState: StringBuilder = beginString();
         contractState.append("LED:");
@@ -1717,10 +1726,10 @@ contract ProofOfCapital with Deployable, Ownable {
         return contractState.toString();
     }
 
-    get fun standard_contract_state_support_values(): String { 
+    get fun standard_contract_state_support_values(): String {
         let contractState: StringBuilder = beginString();
         contractState.append("PIM:");
-        contractState.append(self.priceIncrementMultiplier.toString());        
+        contractState.append(self.priceIncrementMultiplier.toString());
         contractState.append("|C:");
         contractState.append(self.commission.toCoinsString());
         contractState.append("|LIM:");
@@ -1736,7 +1745,7 @@ contract ProofOfCapital with Deployable, Ownable {
         contractState.append("|CSB:");
         contractState.append(self.contractSupportBalance.toCoinsString());
         contractState.append("|CRTB: ");
-        contractState.append(myBalance().toCoinsString());    
+        contractState.append(myBalance().toCoinsString());
         contractState.append("|AP:");
         contractState.append(self.actualProfit.toCoinsString());
         contractState.append("|CP:");
@@ -1812,4 +1821,3 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
 }
-
