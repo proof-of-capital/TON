@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "dev_ver_3" ]
+  pull_request:
+    branches: [ "main", "dev_ver_3" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [23]
+        os: [ubuntu-22.04]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Git Checkout
+      uses: actions/checkout@v2
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: "yarn"
+
+    - name: Install npm dependencies
+      run: yarn install
+
+    # - name: Spellcheck
+    #   run: |
+    #     yarn spell
+
+    - name: Run Misti
+      run: |
+        yarn blueprint misti --disabled-detectors "PreferredStdlibApi,ZeroAddress,DivideBeforeMultiply,EtaLikeSimplifications" contracts
+
+    - name: Build
+      run: |
+        yarn build
+
+    - name: Run tests
+      run: |
+        yarn test
