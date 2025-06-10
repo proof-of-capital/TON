@@ -115,3 +115,7 @@ message GetLockEndTime {
     mainJettonDeferredWTHDate: Int as uint32;
     supportJettonDeferredWTHDate: Int as uint32;
 }
+
+message GetCurrentPrice {
+    currentPrice: Int as coins;
+}
