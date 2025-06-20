@@ -308,7 +308,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Schedules a deferred withdrawal of the main jetton in 30 days to the specified address.
     receive(msg: JettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(msg.recipientAddress != newAddress(0, 0) && msg.amount > 0, "Recipient address and jetton amount cannot be zero");
+        require(msg.amount > 0 && msg.recipientAddress != newAddress(0, 0), "Recipient address and jetton amount cannot be zero");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.mainJettonDeferredWithdrawalAmount == 0, "Main jetton deferred withdrawal is already scheduled");
         self.recipientDeferredWithdrawalMainJetton = msg.recipientAddress;
@@ -526,11 +526,11 @@ contract ProofOfCapital with Deployable, Ownable {
             msg.oldContractAddress != self.additionalJettonWalletAddress &&
             msg.oldContractAddress != self.jettonSupportMasterAddress &&
             msg.oldContractAddress != self.contractJettonSupportWalletAddress &&
-            (!self.marketMakerAddressesMap.exists(msg.oldContractAddress)) &&
             msg.oldContractAddress != self.returnWalletAddress &&
             msg.oldContractAddress != self.royaltyWalletAddress &&
             msg.oldContractAddress != self.recipientDeferredWithdrawalMainJetton &&
-            msg.oldContractAddress != self.recipientDeferredWithdrawalSupportJetton,
+            msg.oldContractAddress != self.recipientDeferredWithdrawalSupportJetton &&
+            (!self.marketMakerAddressesMap.exists(msg.oldContractAddress)),
             "Old contract address cannot be equal to any of addresses in contract"
         );
     }
@@ -956,7 +956,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Helper function to check if the caller is allowed to trade at the current moment.
     fun checkTradingAccess(): Bool {
-        return self.lockEndTime - now() > SIXTY_DAYS || self.checkControlDay() || (self.mainJettonDeferredWithdrawalDate > 0) || (self.supportJettonDeferredWithdrawalDate > 0);
+        return (self.mainJettonDeferredWithdrawalDate > 0) || (self.supportJettonDeferredWithdrawalDate > 0) || self.lockEndTime - now() > SIXTY_DAYS || self.checkControlDay();
     }
 
     // Helper function to check if the current time is within the "unlock window" period after the lock expires.
