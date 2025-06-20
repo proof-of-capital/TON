@@ -119,3 +119,7 @@ message GetLockEndTime {
 message GetCurrentPrice {
     currentPrice: Int as coins;
 }
+
+message GetNumberOfMarketMakers {
+    currentNumber: Int as uint8;
+}
