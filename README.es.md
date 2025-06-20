@@ -21,7 +21,6 @@ El contrato admite lanzamientos desde cero y también puede tener en cuenta el h
   - [Lanzamiento del contrato](#lanzamiento-del-contrato)
     - [Agregar un nuevo contrato](#agregar-un-nuevo-contrato)
     - [Compilación](#compilación)
-    - [Pruebas](#pruebas)
     - [Implementación o ejecución del script](#implementación-o-ejecución-del-script)
   - [Puntos principales](#puntos-principales)
     - [Variables definidas durante la inicialización y el despliegue del contrato](#variables-definidas-durante-la-inicialización-y-el-despliegue-del-contrato)
@@ -58,14 +57,6 @@ Al crear, selecciona `An empty contract (TACT)`.
 npx blueprint build
 # o
 yarn blueprint build
-```
-
-### Pruebas
-
-```bash
-npx blueprint test
-# o
-yarn blueprint test
 ```
 
 ### Implementación o ejecución del script

@@ -20,7 +20,6 @@ The contract supports launching both from scratch and taking into account the as
   - [Running the Contract](#running-the-contract)
     - [Add a New Contract](#add-a-new-contract)
     - [Build](#build)
-    - [Testing](#testing)
     - [Deployment or Running a Script](#deployment-or-running-a-script)
   - [Key Provisions](#key-provisions)
     - [Variables Set During Initialization and Deployment](#variables-set-during-initialization-and-deployment)
@@ -58,14 +57,6 @@ When creating, select `An empty contract (TACT)`.
 npx blueprint build
 # or
 yarn blueprint build
-```
-
-### Testing
-
-```bash
-npx blueprint test
-# or
-yarn blueprint test
 ```
 
 ### Deployment or Running a Script
