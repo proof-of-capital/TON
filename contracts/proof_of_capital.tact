@@ -222,7 +222,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(self.priceIncrementMultiplier > -1000, "Price increment too low");
         require(self.royaltyProfitPercent > 9 && self.royaltyProfitPercent <= 1000, "Started royalty profit cannot be less than ten and greater than thousand");
 
-        send(SendParameters{
+        message(MessageParameters{
             to: self.jettonMasterAddress,
             value: 0,
             mode: SendRemainingValue,
@@ -240,7 +240,7 @@ contract ProofOfCapital with Deployable, Ownable {
             self.contractJettonWalletAddress = msg.wallet_address;
             if (self.jettonSupport) {
                 if (self.contractJettonSupportWalletAddress != msg.wallet_address)  {
-                    send(SendParameters{
+                    message(MessageParameters{
                         to: self.jettonSupportMasterAddress,
                         value: 0,
                         mode: SendRemainingValue,
@@ -265,7 +265,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(msg.additionalTime == HALF_YEAR || msg.additionalTime == TEN_MINUTES || msg.additionalTime == THREE_MONTHS, "Invalid time!");
         self.lockEndTime += msg.additionalTime;
         if (msg.additionalTime == HALF_YEAR) {
-            send(SendParameters{
+            message(MessageParameters{
                 to: self.owner,
                 value: 0,
                 bounce: true,
@@ -273,7 +273,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 body: "Lock extended for 182 days.".asComment()
             });
         } else if (msg.additionalTime == TEN_MINUTES) {
-            send(SendParameters{
+            message(MessageParameters{
                 to: self.owner,
                 value: 0,
                 bounce: true,
@@ -281,7 +281,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 body: "Lock extended for 10 minutes.".asComment()
             });
         } else {
-            send(SendParameters{
+            message(MessageParameters{
                 to: self.owner,
                 value: 0,
                 bounce: true,
@@ -314,7 +314,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.recipientDeferredWithdrawalMainJetton = msg.recipientAddress;
         self.mainJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
         self.mainJettonDeferredWithdrawalAmount = msg.amount;
-        send(SendParameters{
+        message(MessageParameters{
             to: msg.recipientAddress,
             value: self.commission,
             bounce: true,
@@ -356,7 +356,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(self.supportJettonDeferredWithdrawalDate == 0, "Support jetton deferred withdrawal is already scheduled");
         self.recipientDeferredWithdrawalSupportJetton = msg.recipientAddress;
         self.supportJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
-        send(SendParameters{
+        message(MessageParameters{
             to: msg.recipientAddress,
             value: self.commission,
             bounce: true,
@@ -383,7 +383,7 @@ contract ProofOfCapital with Deployable, Ownable {
         if (self.jettonSupport) {
             self.transferTokensTo(self.contractJettonSupportWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, "Support jetton deferred withdrawal");
         } else {
-            send(SendParameters{
+            message(MessageParameters{
                 to: self.recipientDeferredWithdrawalSupportJetton,
                 value: self.contractSupportBalance,
                 bounce: true,
@@ -424,7 +424,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(msg.flag != self.profitInTime, "Turn on value cannot be equal");
         require(context().value >= self.commission * 2, "Amount must be greater than commission");
         self.profitInTime = msg.flag;
-        send(SendParameters{
+        message(MessageParameters{
             to: self.royaltyWalletAddress,
             value: self.commission,
             bounce: true,
@@ -571,7 +571,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     self.contractSupportBalance += deltaSupportBalance;
                     let change = value - deltaSupportBalance;
                     if (change > 0) {
-                        send(SendParameters{
+                        message(MessageParameters{
                             to: sender(),
                             value: change,
                             bounce: true,
@@ -596,14 +596,14 @@ contract ProofOfCapital with Deployable, Ownable {
                 let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / 1000;
 
                 if (!self.profitInTime) {
-                    send(SendParameters{
+                    message(MessageParameters{
                         to: sender(),
                         value: creatorProfit,
                         bounce: true,
                         mode: SendPayFwdFeesSeparately,
                         body: "Send profit to the owner".asComment()
                     });
-                    send(SendParameters{
+                    message(MessageParameters{
                         to: sender(),
                         value: royaltyProfit,
                         bounce: true,
@@ -761,7 +761,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     if (supportAmountToPay > 0) {
                         if (!self.jettonSupport) {
-                            send(SendParameters{
+                            message(MessageParameters{
                                 to: self.owner,
                                 value: supportAmountToPay,
                                 bounce: true,
@@ -793,7 +793,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     self.totalJettonsSold -= tokenForBuyback;
 
                     if (!self.jettonSupport) {
-                        send(SendParameters{
+                        message(MessageParameters{
                             to: msg.sender,
                             value: supportAmountToPay,
                             bounce: true,
@@ -852,7 +852,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.owner, "Access is only for the owner");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         let amount: Int = myBalance() - context().value - self.commission;
-        send(SendParameters{
+        message(MessageParameters{
             to: self.owner,
             value: amount,
             mode: SendIgnoreErrors | SendRemainingValue,
@@ -872,7 +872,7 @@ contract ProofOfCapital with Deployable, Ownable {
         } else {
             unusedTonToWithdraw = myBalance() - (self.commission * COMMISSION_MULTIPLIER);
         }
-        send(SendParameters{
+        message(MessageParameters{
             to: self.owner,
             value: unusedTonToWithdraw,
             mode: SendPayFwdFeesSeparately | SendBounceIfActionFail,
@@ -886,7 +886,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(self.profitInTime, "Mode profitInTime is active, you do not need to ask withdrawal");
         if (sender() == self.owner()) {
             if (!self.jettonSupport) {
-                send(SendParameters{
+                message(MessageParameters{
                     to: sender(),
                     value: self.ownerTonBalance,
                     bounce: true,
@@ -901,7 +901,7 @@ contract ProofOfCapital with Deployable, Ownable {
         } else {
             require(sender() == self.royaltyWalletAddress, "Access is only for current owner or royalty wallet");
             if (!self.jettonSupport) {
-                send(SendParameters{
+                message(MessageParameters{
                     to: sender(),
                     value: self.royaltyTonBalance,
                     bounce: true,
@@ -918,7 +918,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Sends the sender information about the lock end time and deferred withdrawals.
     receive("check lock") {
-        send(SendParameters{
+        message(MessageParameters{
             to: sender(),
             value: self.commission,
             body: GetLockEndTime{ lockEndTime: self.lockEndTime, mainJettonDeferredWTHDate: self.mainJettonDeferredWithdrawalDate, supportJettonDeferredWTHDate: self.supportJettonDeferredWithdrawalDate }.toCell()});
@@ -926,7 +926,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Sends the current price of the main jetton to the sender.
     receive("get current price") {
-        send(SendParameters{
+        message(MessageParameters{
             to: sender(),
             value: self.commission,
             body: GetCurrentPrice{ currentPrice: self.currentPrice }.toCell()});
@@ -934,7 +934,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Sends the number of market makers.
     receive("get number of MM") {
-        send(SendParameters{
+        message(MessageParameters{
             to: sender(),
             value: self.commission,
             body: GetNumberOfMarketMakers{ currentNumber: self.marketMakerAddressesLength }.toCell()});
@@ -974,7 +974,7 @@ contract ProofOfCapital with Deployable, Ownable {
         .storeRef(textComment.toCell())
         .endCell();
 
-        send(SendParameters{
+        message(MessageParameters{
             to: toAddress,
             value: self.commission,
             body: JettonTransfer{
