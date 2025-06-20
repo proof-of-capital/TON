@@ -1375,7 +1375,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Calculates the support amount (supportAmountToPay) required to be paid for a given number of earned tokens (tokenAmount).
     //
     // Logic:
-    // - Uses local copies of the current earned step, step token remainder, price, and tokens per level.
+    // - Uses local copies of current step, step token remainder, price, and tokens per level for earned.
     // - While there are tokens left to pay for and the current step does not exceed the maximum step:
     //   - Determines the number of tokens available at the current step (remainder).
     //   - If the remaining token amount is greater than or equal to the available remainder:
