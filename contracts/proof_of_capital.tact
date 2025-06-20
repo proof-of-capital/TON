@@ -729,6 +729,7 @@ contract ProofOfCapital with Deployable, Ownable {
                         self.callJettonsID += 1;
                     } else {
                         if (self.totalJettonsSold == self.offsetJettons && (self.offsetJettons - self.jettonsEarned) >= msg.amount) {
+                            // @misti:suppress UnusedExpressionResult
                             self.calculateChangeOffsetJetton(msg.amount);
                         } else {
                             self.contractJettonBalance += msg.amount;
@@ -743,10 +744,12 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     if (self.offsetJettons > self.jettonsEarned) {
                         if (effectiveAmount > self.offsetJettons - self.jettonsEarned) {
+                            // @misti:suppress UnusedExpressionResult
                             self.calculateSupportForTokenAmountEarned(self.offsetJettons - self.jettonsEarned);
                             let buybackAmount: Int = effectiveAmount - (self.offsetJettons - self.jettonsEarned);
                             supportAmountToPay = self.calculateSupportForTokenAmountEarned(buybackAmount);
                         } else {
+                            // @misti:suppress UnusedExpressionResult
                             self.calculateSupportForTokenAmountEarned(effectiveAmount);
                             supportAmountToPay = 0;
                         }
