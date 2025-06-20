@@ -1,26 +1,21 @@
-import { Address, toNano, beginCell, Cell} from '@ton/core';
+import { toNano } from '@ton/core';
 import { ProofOfCapital } from '../wrappers/ProofOfCapital';
 import { NetworkProvider } from '@ton/blueprint';
+import * as address from './!allAddresses';
 
 export async function run(provider: NetworkProvider) {
-    const owner = Address.parse("");
-    const marketMaker = Address.parse("");
-    const jettonMasterAddress = Address.parse(""); 
-    const returnWalletAddress = Address.parse("");
-    const royaltyWalletAddress = Address.parse("");
     const lockEndTime = BigInt(Math.floor(Date.now() / 1000));
     const initialPricePerToken = 15000n;
-    const firstLevelJettonQuantity = 5000000000000000n;
+    const firstLevelJettonQuantity = toNano(5000000n);
     const priceIncrementMultiplier = 50n;
     const levelIncreaseMultiplier = 20n;
     const trendChangeStep = 20n;
     const levelDecreaseMultiplierafterTrend = 9n;
     const profitPercentage = 100n;
-    const offsetJettons = 15000000000000n;
+    const offsetJettons = toNano(15000n);
     const controlPeriod = 60n;
     const jettonSupport = true;
-    const jettonSupportMaster = Address.parse("");
-    const royaltyProfitPercent = 2n;
+    const royaltyProfitPercent = 200n;
 
     console.log("-------")
     console.log(lockEndTime)
@@ -31,11 +26,11 @@ export async function run(provider: NetworkProvider) {
 
       proofOfCapital = provider.open(await ProofOfCapital.fromInit(
         id,
-        owner,
-        marketMaker,
-        jettonMasterAddress,
-        returnWalletAddress,
-        royaltyWalletAddress,
+        address.owner,
+        address.marketMaker,
+        address.jettonMasterAddress,
+        address.returnWalletAddress,
+        address.royaltyWalletAddress,
         lockEndTime,
         initialPricePerToken,
         firstLevelJettonQuantity,
@@ -47,13 +42,13 @@ export async function run(provider: NetworkProvider) {
         offsetJettons,
         controlPeriod,
         jettonSupport,
-        jettonSupportMaster,
+        address.jettonSupportMaster,
         royaltyProfitPercent)
       );
       console.log(id)
       console.log(proofOfCapital.address.toString())
       console.log()
-    // } while(!proofOfCapital.address.toString().match(/(A|_P0K|-P0K|_POK|-POK)$/))
+    // } while(!proofOfCapital.address.toString().match(/(A|B)$/))
     await proofOfCapital.send(
         provider.sender(),
         {
