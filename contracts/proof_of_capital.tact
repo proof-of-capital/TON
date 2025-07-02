@@ -50,6 +50,8 @@ fun getPeriod(period: Int): Int {
 contract ProofOfCapital with Deployable, Ownable {
     isActive: Bool = true; // Contract activity flag
     oldContractAddress: Address; // Address of the old contract, from which coins are expected to be transferred to the current contract (messages are treated as if sent by the owner)
+    oldContractAddressesMap: map<Address, Int as uint8>; // Map of old contracts addresses
+    oldContractAddressesLength: Int as uint8; // Number of old contracts in the map
 
     id: Int as uint256; // Unique contract identifier, passed during deployment and used to initialize the contract address when choosing a special address (default is 0)
     owner: Address; // Creator's address — the main owner of the contract, who can manage it and perform certain actions (token deposits, withdrawals, setting locks, changing participants)
@@ -152,6 +154,9 @@ contract ProofOfCapital with Deployable, Ownable {
         royaltyProfitPercent: Int
         ) {
         self.oldContractAddress = owner;
+        self.oldContractAddressesMap = emptyMap();
+        self.oldContractAddressesLength = 0;
+
         self.id = 0;
         self.owner = owner;
         self.jettonMasterAddress = jettonMasterAddress;
@@ -403,6 +408,7 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: AssignNewOwner) {
         require(sender() == self.owner || sender() == self.reserveOwner, "Only the owner or the reserve owner can make changes.");
         require(msg.newOwner != newAddress(0, 0), "New owner address cannot be null.");
+        require((!self.oldContractAddressesMap.exists(msg.newOwner)), "Old contract address cannot be equal to any of addresses in contract");
         if (self.owner == self.reserveOwner) {
             self.owner = msg.newOwner;
             self.reserveOwner = msg.newOwner;
@@ -444,6 +450,7 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: ChangeReturnWallet) {
         require(sender() == self.owner, "Access is only for the owner");
         require(msg.newReturnWalletAddress != newAddress(0, 0), "New return wallet address cannot be null");
+        require((!self.oldContractAddressesMap.exists(msg.newReturnWalletAddress)), "Old contract address cannot be equal to any of addresses in contract");
         self.returnWalletAddress = msg.newReturnWalletAddress;
     }
 
@@ -490,6 +497,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Adds a new market maker address to the map if it is not already present.
     receive(msg: AddMarketMakerAddresses) {
         require(sender() == self.owner, "Access is only for the owner");
+        require((!self.oldContractAddressesMap.exists(msg.newMarketMakerAddresse)), "Old contract address cannot be equal to any of addresses in contract");
         if (!self.marketMakerAddressesMap.exists(msg.newMarketMakerAddresse)) {
             self.marketMakerAddressesLength += 1;
             self.marketMakerAddressesMap.set(msg.newMarketMakerAddresse, self.marketMakerAddressesLength);
@@ -533,6 +541,12 @@ contract ProofOfCapital with Deployable, Ownable {
             (!self.marketMakerAddressesMap.exists(msg.oldContractAddress)),
             "Old contract address cannot be equal to any of addresses in contract"
         );
+        self.oldContractAddress = msg.oldContractAddress;
+        if (!self.oldContractAddressesMap.exists(msg.oldContractAddress)) {
+            require(self.oldContractAddressesLength < 256, "Too much old contracts");
+            self.oldContractAddressesLength += 1;
+            self.oldContractAddressesMap.set(msg.oldContractAddress, self.oldContractAddressesLength);
+        }
     }
 
     // Main handler for incoming messages without parameters (for TON).
