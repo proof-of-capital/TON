@@ -26,6 +26,7 @@ import "@stdlib/ownable";
 import "./messages";
 
 
+const SEVEN_DAYS: Int = 604_000; // 7 days (used as the period for deferred withdrawal)
 const TWO_YEARS: Int = 63_072_000; // 2 years (used as the maximum lock extension period)
 const HALF_YEAR: Int = 15_768_000; // half a year (used for lock extension)
 const THREE_MONTHS: Int = 7_776_000; // 3 months (used for lock extension)
@@ -344,6 +345,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set or reset");
         require(now() >= self.mainJettonDeferredWithdrawalDate, "Main jetton deferred withdrawal date is not arrived yet");
+        require(now() <= self.mainJettonDeferredWithdrawalDate + SEVEN_DAYS, "Main jetton deferred withdrawal period is finished");
         require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance for deferred withdrawal");
         require(self.contractJettonBalance - self.totalJettonsSold >= self.mainJettonDeferredWithdrawalAmount, "Insufficient jetton balance for deferred withdrawal amount");
         self.transferTokensTo(self.contractJettonWalletAddress, self.recipientDeferredWithdrawalMainJetton, self.mainJettonDeferredWithdrawalAmount, "Main jetton deferred withdrawal");
@@ -385,6 +387,8 @@ contract ProofOfCapital with Deployable, Ownable {
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.supportJettonDeferredWithdrawalDate != 0, "Support jetton deferred withdrawal date is not set or reset");
         require(now() >= self.supportJettonDeferredWithdrawalDate, "Support jetton deferred withdrawal date is not arrived yet");
+        require(now() <= self.supportJettonDeferredWithdrawalDate + SEVEN_DAYS, "Support jetton deferred withdrawal period is finished");
+
         if (self.jettonSupport) {
             self.transferTokensTo(self.contractJettonSupportWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, "Support jetton deferred withdrawal");
         } else {
