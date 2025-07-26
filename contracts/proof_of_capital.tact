@@ -638,7 +638,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.contractSupportBalance += netValue;
                 self.totalJettonsSold += totalTokens;
 
-                self.transferTokensTo(self.contractJettonWalletAddress, sender(), totalTokens, "Transfer main jettons");
+                self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell());
                 self.queryId += 1;
             }
         }
@@ -727,7 +727,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     self.contractSupportBalance += netValue;
                     self.totalJettonsSold += totalTokens;
 
-                    self.transferTokensTo(self.contractJettonWalletAddress, msg.sender, totalTokens, "Transfer main jettons");
+                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell());
                 }
             } catch (error) {
                 let errorComment: StringBuilder = beginString();
@@ -938,27 +938,33 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Sends the sender information about the lock end time and deferred withdrawals.
-    receive("check lock") {
+    receive(msg: FetchLockEndTime) {
         message(MessageParameters{
             to: sender(),
-            value: self.commission,
-            body: GetLockEndTime{ lockEndTime: self.lockEndTime, mainJettonDeferredWTHDate: self.mainJettonDeferredWithdrawalDate, supportJettonDeferredWTHDate: self.supportJettonDeferredWithdrawalDate }.toCell()});
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue,
+            body: GetLockEndTime{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, lockEndTime: self.lockEndTime, mainJettonDeferredWTHDate: self.mainJettonDeferredWithdrawalDate, supportJettonDeferredWTHDate: self.supportJettonDeferredWithdrawalDate }.toCell()});
     }
 
     // Sends the current price of the main jetton to the sender.
-    receive("get current price") {
+    receive(msg: GetCurrentPrice) {
         message(MessageParameters{
             to: sender(),
-            value: self.commission,
-            body: GetCurrentPrice{ currentPrice: self.currentPrice }.toCell()});
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue,
+            body: GetCurrentPrice{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentPrice: self.currentPrice }.toCell()});
     }
 
     // Sends the number of market makers.
-    receive("get number of MM") {
+    receive(msg: GetNumberOfMarketMakers) {
         message(MessageParameters{
             to: sender(),
-            value: self.commission,
-            body: GetNumberOfMarketMakers{ currentNumber: self.marketMakerAddressesLength }.toCell()});
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue,
+            body: GetNumberOfMarketMakers{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentNumber: self.marketMakerAddressesLength }.toCell()});
     }
 
     // Calculates the number of full 30-day periods elapsed since controlDay.
@@ -1006,6 +1012,23 @@ contract ProofOfCapital with Deployable, Ownable {
                 customPayload: null,
                 forwardTonAmount: 1,
                 forwardPayload: forwardPayload
+            }.toCell(),
+        });
+    }
+
+        // Sends the specified amount of jettons with a comment to the given address.
+    fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell) {
+        message(MessageParameters{
+            to: toAddress,
+            value: self.commission,
+            body: JettonTransfer{
+                queryId: self.queryId,
+                amount: amount,
+                destination: recipient,
+                responseDestination: recipient,
+                customPayload: null,
+                forwardTonAmount: self.commission * 1/3,
+                forwardPayload: payload,
             }.toCell(),
         });
     }

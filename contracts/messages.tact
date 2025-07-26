@@ -111,15 +111,44 @@ message OldContractAddress {
 }
 
 message GetLockEndTime {
+    queryId: Int as uint64;
+    originalGasTo: Address;
     lockEndTime: Int as uint32;
     mainJettonDeferredWTHDate: Int as uint32;
     supportJettonDeferredWTHDate: Int as uint32;
 }
 
 message GetCurrentPrice {
+    queryId: Int as uint64;
+    originalGasTo: Address;
     currentPrice: Int as coins;
 }
 
 message GetNumberOfMarketMakers {
+    queryId: Int as uint64;
+    originalGasTo: Address;
     currentNumber: Int as uint8;
+}
+
+
+
+const PURCHASE_IS_SUCCESS_OP_CODE: Int = 0x163572b9;
+
+message(0x163572b9) PurchaseIsSuccess {
+} 
+
+
+message FetchLockEndTime {
+    queryId: Int as uint64;
+    originalGasTo: Address;
+}
+
+message FetchCurrentPrice {
+    queryId: Int as uint64;
+    originalGasTo: Address;
+}
+
+message FetchNumberOfMarketMakers {
+    queryId: Int as uint64;
+    originalGasTo: Address;
 }
