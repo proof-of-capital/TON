@@ -27,7 +27,7 @@ message(0xf8a7ea5) JettonTransfer {
     responseDestination: Address?;
     customPayload: Cell? = null;
     forwardTonAmount: Int as coins;
-    forwardPayload: Cell?;
+    forwardPayload: Slice as remaining;
 }
 
 message(0x595f07bc) JettonBurn {
@@ -48,7 +48,6 @@ message WithdrawAllCoins {}
 message WithdrawAllSupportCoins {}
 
 message AddAdditionalJettonData {
-    newAdditionalJettonMasterAddress: Address;
     newAdditionalJettonWalletAddress: Address;
     amount: Int as coins;
 }
@@ -133,6 +132,7 @@ message GetNumberOfMarketMakers {
 
 
 
+
 message(0x163572b9) PurchaseIsSuccess {
 } 
 
@@ -151,3 +151,12 @@ message FetchNumberOfMarketMakers {
     queryId: Int as uint64;
     originalGasTo: Address;
 }
+
+message SetFarm {
+    farm: Address;
+}
+
+message PaybackToFarm {}
+
+message PriceGrowthBuyback {}
+
