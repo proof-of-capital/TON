@@ -132,9 +132,8 @@ message GetNumberOfMarketMakers {
 
 
 
-const PURCHASE_IS_SUCCESS_OP_CODE: Int = 0x163572b9;
 
-message(PURCHASE_IS_SUCCESS_OP_CODE) PurchaseIsSuccess {
+message(0x163572b9) PurchaseIsSuccess {
 } 
 
 
