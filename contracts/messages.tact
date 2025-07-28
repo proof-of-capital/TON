@@ -48,7 +48,6 @@ message WithdrawAllCoins {}
 message WithdrawAllSupportCoins {}
 
 message AddAdditionalJettonData {
-    newAdditionalJettonMasterAddress: Address;
     newAdditionalJettonWalletAddress: Address;
     amount: Int as coins;
 }
