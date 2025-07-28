@@ -133,7 +133,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     supportJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of the waiting period for delayed withdrawal of the support token
     recipientDeferredWithdrawalSupportJetton: Address; // Recipient address for the deferred withdrawal of the support jetton
-    
+    jettonDecimals: Int as uint32; // Number of decimals for the jetton
     farm: Address; // Farm address
 
     isInitialized: Bool = false; // Flag indicating whether the contract's jetton wallets are initialized (required to run self.calculateOffset())
@@ -157,7 +157,8 @@ contract ProofOfCapital with Deployable, Ownable {
         jettonSupport: Bool,
         jettonSupportMasterAddress: Address,
         royaltyProfitPercent: Int,
-        coefficientProfit: Int
+        coefficientProfit: Int,
+        jettonDecimals: Int
         ) {
         self.oldContractAddress = owner;
         self.oldContractAddressesMap = emptyMap();
@@ -181,7 +182,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.jettonSupport = jettonSupport;
         self.jettonSupportMasterAddress = jettonSupportMasterAddress;
         self.contractJettonSupportWalletAddress = owner;
-
+        self.jettonDecimals = jettonDecimals;
         self.currentStep = 0;
         self.remainderOfStep = firstLevelJettonQuantity;
         self.contractJettonBalance = 0;
@@ -1147,7 +1148,7 @@ contract ProofOfCapital with Deployable, Ownable {
         while (remainingAddSupport > 0 && remainingAddJettons > 0) {
             let tokensAvailableInStep: Int = jettonsPerLevel - remainderOfStep;
             let profitPercentage: Int = self.calculateProfit(localCurrentStep);
-            let tonInStep: Int = tokensAvailableInStep * currentPrice / 1000000000;
+            let tonInStep: Int = tokensAvailableInStep * currentPrice / self.jettonDecimals;
             let tonRealInStep: Int = tonInStep * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
 
             if (remainingAddSupport >= tonRealInStep && remainingAddJettons >= tokensAvailableInStep) {
@@ -1181,11 +1182,11 @@ contract ProofOfCapital with Deployable, Ownable {
 
 
                 if (remainingAddSupport >= tonRealInStep) {
-                    supportToPayForStep = remainingAddJettons * adjustedPrice / 1000000000;
+                    supportToPayForStep = remainingAddJettons * adjustedPrice / self.jettonDecimals;
                     tokensToBuyInThisStep = remainingAddJettons;
                 } else {
                     supportToPayForStep = remainingAddSupport;
-                    tokensToBuyInThisStep = remainingAddSupport * 1000000000 / adjustedPrice;
+                    tokensToBuyInThisStep = remainingAddSupport * self.jettonDecimals / adjustedPrice;
                 }
                 remainderOfStep += tokensToBuyInThisStep;
                 remainingAddSupport -= supportToPayForStep;
@@ -1302,7 +1303,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
         while (remainingSupportAmount > 0 && remainderOfjettons >= jettonsToGive) {
             let tokensAvailableInStep: Int = remainderOfStep;
-            let tonRequiredForStep: Int = tokensAvailableInStep * currentPrice / 1000000000;
+            let tonRequiredForStep: Int = tokensAvailableInStep * currentPrice / self.jettonDecimals;
 
             if (remainingSupportAmount >= tonRequiredForStep) {
                 jettonsToGive += tokensAvailableInStep;
@@ -1321,7 +1322,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 remainderOfStep = jettonsPerLevel;
                 currentPrice = (currentPrice * (MAX_PERCENT + self.priceIncrementMultiplier)) / MAX_PERCENT;
             } else {
-                let tokensToBuyInThisStep: Int = remainingSupportAmount * 1000000000 / currentPrice;
+                let tokensToBuyInThisStep: Int = remainingSupportAmount * self.jettonDecimals / currentPrice;
                 jettonsToGive += tokensToBuyInThisStep;
                 let tonSpentInThisStep: Int = remainingSupportAmount;
 
@@ -1391,7 +1392,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
 
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
-                let supportToPayForStep: Int = tokensAvailableInStep * adjustedPrice / 1000000000;
+                let supportToPayForStep: Int = tokensAvailableInStep * adjustedPrice / self.jettonDecimals;
                 supportAmountToPay += supportToPayForStep;
 
                 remainingJettonAmount -= tokensAvailableInStep;
@@ -1418,7 +1419,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
-                let supportToPayForStep: Int = remainingJettonAmount * adjustedPrice / 1000000000;
+                let supportToPayForStep: Int = remainingJettonAmount * adjustedPrice / self.jettonDecimals;
                 supportAmountToPay += supportToPayForStep;
 
                 remainderOfStep += remainingJettonAmount;
@@ -1477,7 +1478,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
-                let supportToPayForStep: Int = tokensAvailableInStep * adjustedPrice / 1000000000;
+                let supportToPayForStep: Int = tokensAvailableInStep * adjustedPrice / self.jettonDecimals;
                 supportAmountToPay += supportToPayForStep;
 
                 localCurrentStep += 1;
@@ -1492,7 +1493,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
 
-                let supportToPayForStep: Int = remainingJettonAmount * adjustedPrice / 1000000000;
+                let supportToPayForStep: Int = remainingJettonAmount * adjustedPrice / self.jettonDecimals;
                 supportAmountToPay += supportToPayForStep;
 
                 remainderOfStep -= remainingJettonAmount;
