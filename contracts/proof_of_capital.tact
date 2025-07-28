@@ -851,18 +851,9 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: WithdrawAllCoins) {
         require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
-        self.transferTokensTo(self.contractJettonWalletAddress, self.farm, self.contractJettonBalance - self.totalJettonsSold, "Transfer all main jettons to the owner");
-        self.currentStep = 0;
+        self.transferTokensTo(self.contractJettonWalletAddress, self.farm, self.contractJettonBalance - self.totalJettonsSold, "Transfer all main jettons to the owner"); // todo fix farm
         self.contractJettonBalance = 0;
-        self.totalJettonsSold = 0;
-        self.jettonsEarned = 0;
-        self.quantityJettonsPerLevel = self.firstLevelJettonQuantity;
-        self.currentPrice = self.initialPricePerToken;
-        self.remainderOfStep = self.firstLevelJettonQuantity;
-        self.currentStepEarned = 0;
-        self.remainderOfStepEarned = self.firstLevelJettonQuantity;
-        self.quantityJettonsPerLevelEarned = self.firstLevelJettonQuantity;
-        self.currentPriceEarned = self.initialPricePerToken;
+        self.isActive = false;
     }
 
     // Transfers the entire support jetton balance to the owner after the lock period ends.
@@ -872,8 +863,9 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(self.jettonSupport, "Jetton support is not used.");
-        self.transferTokensTo(self.contractJettonSupportWalletAddress, self.farm, self.contractSupportBalance, "Send all support balance to the owner.");
+        self.transferTokensTo(self.contractJettonSupportWalletAddress, self.farm, self.contractSupportBalance, "Send all support balance to the owner."); // todo fix farm
         self.contractSupportBalance = 0;
+        self.isActive = false;
     }
 
     // Transfers the entire available TON balance to the owner after the lock period ends.
@@ -891,6 +883,7 @@ contract ProofOfCapital with Deployable, Ownable {
             body: PaybackToFarm{}.toCell()
         });
         self.contractSupportBalance = 0;
+        self.isActive = false;
     }
 
     // Sends unused TON to the owner.
@@ -898,10 +891,10 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: WithdrawUnusedTons) {
         require(sender() == self.owner, "Access is only for the owner");
         let unusedTonToWithdraw: Int = 0;
-        if (!self.jettonSupport) {
-            unusedTonToWithdraw = myBalance() - self.contractSupportBalance - (self.commission * COMMISSION_MULTIPLIER);
-        } else {
+        if (self.jettonSupport) {
             unusedTonToWithdraw = myBalance() - (self.commission * COMMISSION_MULTIPLIER);
+        } else {
+            unusedTonToWithdraw = myBalance() - self.contractSupportBalance - self.ownerTonBalance - self.royaltyTonBalance - (self.commission * COMMISSION_MULTIPLIER);
         }
         message(MessageParameters{
             to: self.owner,
@@ -914,9 +907,11 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Sends profit to the current owner or the royalty wallet depending on the requester's rights.
     receive(msg: GetProfitOnRequest) {
-        require(self.profitInTime, "Mode profitInTime is active, you do not need to ask withdrawal");
         if (sender() == self.owner()) {
-            if (!self.jettonSupport) {
+            if (self.jettonSupport) {
+                self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), self.ownerSupportBalance, "Send profit to the owner");
+                self.ownerSupportBalance = 0;
+            } else {
                 message(MessageParameters{
                     to: sender(),
                     value: self.ownerTonBalance,
@@ -925,14 +920,14 @@ contract ProofOfCapital with Deployable, Ownable {
                     body: "Send profit to the owner".asComment()
                 });
                 self.ownerTonBalance = 0;
-            } else {
-                self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), self.ownerSupportBalance, "Send profit to the owner");
-                self.ownerSupportBalance = 0;
             }
         } else {
             require(sender() == self.royaltyWalletAddress, "Access is only for current owner or royalty wallet");
-            if (!self.jettonSupport) {
-                message(MessageParameters{
+            if (self.jettonSupport) {
+                self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), self.royaltySupportBalance, "Send profit to royalty");
+                self.royaltySupportBalance = 0;
+            } else {
+                 message(MessageParameters{
                     to: sender(),
                     value: self.royaltyTonBalance,
                     bounce: true,
@@ -940,9 +935,6 @@ contract ProofOfCapital with Deployable, Ownable {
                     body: "Send profit to royalty".asComment()
                 });
                 self.royaltyTonBalance = 0;
-            } else {
-                self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), self.royaltySupportBalance, "Send profit to royalty");
-                self.royaltySupportBalance = 0;
             }
         }
     }
