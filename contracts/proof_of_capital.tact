@@ -611,7 +611,11 @@ contract ProofOfCapital with Deployable, Ownable {
                     }
                     require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
                 }
-                require(value >= self.commission, "Insufficient funds to cover commission");
+                if (self.marketMakerAddressesMap.exists(sender())) {
+                    require(value >= self.commission * 2, "Insufficient funds to cover commission");
+                } else {
+                    require(value >= self.commission, "Insufficient funds to cover commission");
+                }
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
 
                 let totalTokens: Int = self.calculateJettonsToGiveForSupportAmount(value);
@@ -643,7 +647,11 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.contractSupportBalance += netValue;
                 self.totalJettonsSold += totalTokens;
 
-                self.transferTokensTo(self.contractJettonWalletAddress, sender(), totalTokens, "Transfer main jettons");
+                if (self.marketMakerAddressesMap.exists(sender())) {
+                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                } else {
+                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission, 1);
+                }
                 self.queryId += 1;
             }
         }
@@ -692,10 +700,18 @@ contract ProofOfCapital with Deployable, Ownable {
         if (sender() == self.contractJettonSupportWalletAddress) {
             try {
                 require(self.jettonSupport, "Jettons support is not used or notification not from your jetton support wallet!");
-                if (self.profitInTime) { // to do fix for market maker
-                    require(value >= self.commission * 3, "Insufficient funds to cover commission for transfer support jettons.");
+                if (self.profitInTime) {
+                    if (self.marketMakerAddressesMap.exists(msg.sender)) {
+                        require(value >= self.commission * 4, "Insufficient funds to cover commission for transfer support jettons.");
+                    } else {
+                        require(value >= self.commission * 3, "Insufficient funds to cover commission for transfer support jettons.");
+                    }
                 } else {
-                    require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
+                    if (self.marketMakerAddressesMap.exists(msg.sender)) {
+                        require(value >= self.commission * 2, "Insufficient funds to cover commission for transfer support jettons.");
+                    } else {
+                        require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
+                    }
                 }
                 if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
                     if (self.offsetJettons - self.jettonsEarned > 0) {
@@ -732,8 +748,11 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     self.contractSupportBalance += netValue;
                     self.totalJettonsSold += totalTokens;
-
-                    self.transferTokensTo(self.contractJettonWalletAddress, msg.sender, totalTokens, "Transfer main jettons");
+                    if (self.marketMakerAddressesMap.exists(msg.sender)) {
+                        self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                    } else {
+                        self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission, 1);
+                    }
                 }
             } catch (error) {
                 let errorComment: StringBuilder = beginString();
@@ -948,27 +967,33 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Sends the sender information about the lock end time and deferred withdrawals.
-    receive("check lock") {
+    receive(msg: FetchLockEndTime) {
         message(MessageParameters{
             to: sender(),
-            value: self.commission,
-            body: GetLockEndTime{ lockEndTime: self.lockEndTime, mainJettonDeferredWTHDate: self.mainJettonDeferredWithdrawalDate, supportJettonDeferredWTHDate: self.supportJettonDeferredWithdrawalDate }.toCell()});
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue,
+            body: GetLockEndTime{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, lockEndTime: self.lockEndTime, mainJettonDeferredWTHDate: self.mainJettonDeferredWithdrawalDate, supportJettonDeferredWTHDate: self.supportJettonDeferredWithdrawalDate }.toCell()});
     }
 
     // Sends the current price of the main jetton to the sender.
-    receive("get current price") {
+    receive(msg: GetCurrentPrice) {
         message(MessageParameters{
             to: sender(),
-            value: self.commission,
-            body: GetCurrentPrice{ currentPrice: self.currentPrice }.toCell()});
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue,
+            body: GetCurrentPrice{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentPrice: self.currentPrice }.toCell()});
     }
 
     // Sends the number of market makers.
-    receive("get number of MM") {
+    receive(msg: GetNumberOfMarketMakers) {
         message(MessageParameters{
             to: sender(),
-            value: self.commission,
-            body: GetNumberOfMarketMakers{ currentNumber: self.marketMakerAddressesLength }.toCell()});
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue,
+            body: GetNumberOfMarketMakers{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentNumber: self.marketMakerAddressesLength }.toCell()});
     }
 
     // Calculates the number of full 30-day periods elapsed since controlDay.
@@ -1016,6 +1041,23 @@ contract ProofOfCapital with Deployable, Ownable {
                 customPayload: null,
                 forwardTonAmount: 1,
                 forwardPayload: forwardPayload.asSlice()
+            }.toCell(),
+        });
+    }
+
+        // Sends the specified amount of jettons with a comment to the given address.
+    fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell, value: Int, forwardTonAmount: Int) {
+        message(MessageParameters{
+            to: toAddress,
+            value: value,
+            body: JettonTransfer{
+                queryId: self.queryId,
+                amount: amount,
+                destination: recipient,
+                responseDestination: recipient,
+                customPayload: null,
+                forwardTonAmount: forwardTonAmount,
+                forwardPayload: payload.asSlice(),
             }.toCell(),
         });
     }
