@@ -160,3 +160,16 @@ message PaybackToFarm {}
 
 message PriceGrowthBuyback {}
 
+message FetchContractInfoAfterUpdatePoc {
+    queryId: Int as uint64;
+    originalGasTo: Address;
+}
+
+message GetContractInfoAfterUpdatePoc {
+    queryId: Int as uint64;
+    originalGasTo: Address;
+    jettonSupportAddress: Address;
+    jettonLaunchAddress: Address;
+    isActive: Bool;
+    currentPrice: Int as coins;
+}

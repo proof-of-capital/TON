@@ -121,6 +121,8 @@ contract ProofOfCapital with Deployable, Ownable {
     profitInTime: Bool; // Flag indicating whether profit is withdrawn immediately or upon request (true – on request, false – immediately)
     royaltyProfitPercent: Int as uint16; // Royalty profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
     creatorProfitPercent: Int as uint16; // Owner profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
+    coefficientProfit: Int as uint16; // Coefficient for calculating the profit percentage (from 1 (100 %) to MAX_PERCENT (10000 %))
+
 
     canWithdrawal: Bool = true; // Flag indicating whether early delayed withdrawal is allowed (true – allowed, false – prohibited)
 
@@ -154,7 +156,8 @@ contract ProofOfCapital with Deployable, Ownable {
         controlPeriod: Int,
         jettonSupport: Bool,
         jettonSupportMasterAddress: Address,
-        royaltyProfitPercent: Int
+        royaltyProfitPercent: Int,
+        coefficientProfit: Int
         ) {
         self.oldContractAddress = owner;
         self.oldContractAddressesMap = emptyMap();
@@ -174,7 +177,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.trendChangeStep = trendChangeStep;
         self.levelDecreaseMultiplierafterTrend = levelDecreaseMultiplierafterTrend;
         self.profitPercentage = profitPercentage;
-
+        self.coefficientProfit = coefficientProfit;
         self.jettonSupport = jettonSupport;
         self.jettonSupportMasterAddress = jettonSupportMasterAddress;
         self.contractJettonSupportWalletAddress = owner;
@@ -583,9 +586,9 @@ contract ProofOfCapital with Deployable, Ownable {
             require(!self.jettonSupport, "Jetton support is used");
             let value = context().value;
             if (self.profitInTime) {
-                value -= self.commission * 3;
+                value -= self.commission * 4;
             } else {
-                value -= self.commission;
+                value -= self.commission * 2;
             }
             if (sender() == self.owner || sender() == self.oldContractAddress) {
                 if (self.offsetJettons - self.jettonsEarned > 0)
@@ -647,11 +650,8 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.contractSupportBalance += netValue;
                 self.totalJettonsSold += totalTokens;
 
-                if (self.marketMakerAddressesMap.exists(sender())) {
-                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
-                } else {
-                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission, 1);
-                }
+                self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+
                 self.queryId += 1;
             }
         }
@@ -701,17 +701,9 @@ contract ProofOfCapital with Deployable, Ownable {
             try {
                 require(self.jettonSupport, "Jettons support is not used or notification not from your jetton support wallet!");
                 if (self.profitInTime) {
-                    if (self.marketMakerAddressesMap.exists(msg.sender)) {
-                        require(value >= self.commission * 4, "Insufficient funds to cover commission for transfer support jettons.");
-                    } else {
-                        require(value >= self.commission * 3, "Insufficient funds to cover commission for transfer support jettons.");
-                    }
+                    require(value >= self.commission * 4, "Insufficient funds to cover commission for transfer support jettons.");
                 } else {
-                    if (self.marketMakerAddressesMap.exists(msg.sender)) {
-                        require(value >= self.commission * 2, "Insufficient funds to cover commission for transfer support jettons.");
-                    } else {
-                        require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
-                    }
+                    require(value >= self.commission * 2, "Insufficient funds to cover commission for transfer support jettons.");
                 }
                 if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
                     if (self.offsetJettons - self.jettonsEarned > 0) {
@@ -748,11 +740,8 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     self.contractSupportBalance += netValue;
                     self.totalJettonsSold += totalTokens;
-                    if (self.marketMakerAddressesMap.exists(msg.sender)) {
-                        self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
-                    } else {
-                        self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission, 1);
-                    }
+                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+
                 }
             } catch (error) {
                 let errorComment: StringBuilder = beginString();
@@ -960,6 +949,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Sends the sender information about the lock end time and deferred withdrawals.
     receive(msg: FetchLockEndTime) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission for transfer lock end time");
         message(MessageParameters{
             to: sender(),
             value: 0,
@@ -969,7 +959,8 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Sends the current price of the main jetton to the sender.
-    receive(msg: GetCurrentPrice) {
+    receive(msg: FetchCurrentPrice) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission for price");
         message(MessageParameters{
             to: sender(),
             value: 0,
@@ -979,13 +970,24 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Sends the number of market makers.
-    receive(msg: GetNumberOfMarketMakers) {
+    receive(msg: FetchNumberOfMarketMakers) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission for transfer number of market makers");
         message(MessageParameters{
             to: sender(),
             value: 0,
             bounce: false,
             mode: SendRemainingValue,
             body: GetNumberOfMarketMakers{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentNumber: self.marketMakerAddressesLength }.toCell()});
+    }
+    // jetton support , launch token, active, current price
+    receive(msg: FetchContractInfoAfterUpdatePoc) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission for transfer jetton support");
+        message(MessageParameters{
+            to: sender(),
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue,
+            body: GetContractInfoAfterUpdatePoc{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, jettonSupportAddress: self.jettonSupportMasterAddress, jettonLaunchAddress: self.jettonMasterAddress, isActive: self.isActive, currentPrice: self.currentPrice }.toCell()});
     }
 
     // Calculates the number of full 30-day periods elapsed since controlDay.
@@ -1059,7 +1061,7 @@ contract ProofOfCapital with Deployable, Ownable {
         if (currentStep > self.trendChangeStep) {
             return self.profitPercentage;
         } else {
-            return self.profitPercentage * 2;
+            return self.profitPercentage * self.coefficientProfit / MAX_PERCENT;
         }
     }
 
