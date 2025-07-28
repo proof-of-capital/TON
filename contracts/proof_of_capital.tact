@@ -1057,7 +1057,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 responseDestination: recipient,
                 customPayload: null,
                 forwardTonAmount: forwardTonAmount,
-                forwardPayload: payload,
+                forwardPayload: payload.asSlice(),
             }.toCell(),
         });
     }
