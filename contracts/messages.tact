@@ -134,7 +134,7 @@ message GetNumberOfMarketMakers {
 
 const PURCHASE_IS_SUCCESS_OP_CODE: Int = 0x163572b9;
 
-message(0x163572b9) PurchaseIsSuccess {
+message(PURCHASE_IS_SUCCESS_OP_CODE) PurchaseIsSuccess {
 } 
 
 
