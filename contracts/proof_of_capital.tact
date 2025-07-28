@@ -131,6 +131,8 @@ contract ProofOfCapital with Deployable, Ownable {
 
     supportJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of the waiting period for delayed withdrawal of the support token
     recipientDeferredWithdrawalSupportJetton: Address; // Recipient address for the deferred withdrawal of the support jetton
+    
+    farm: Address; // Farm address
 
     isInitialized: Bool = false; // Flag indicating whether the contract's jetton wallets are initialized (required to run self.calculateOffset())
 
@@ -220,6 +222,8 @@ contract ProofOfCapital with Deployable, Ownable {
 
         self.recipientDeferredWithdrawalMainJetton = owner;
         self.recipientDeferredWithdrawalSupportJetton = owner;
+
+        self.farm = owner;
 
         require(self.initialPricePerToken > 0, "Initial price must be positive");
         require(self.levelDecreaseMultiplierafterTrend < MAX_PERCENT, "Multiplier too high");
@@ -334,7 +338,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Cancels the delayed withdrawal of the main token and resets the associated data. It can be used by both the creator and the royalty wallet.
     receive(msg: StopJettonDeferredWithdrawal) {
-        require(sender() == self.owner || sender() == self.royaltyWalletAddress, "Access is only for the owner or royaltyWallet");
+        require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.farm, "Access is only for the owner or royaltyWallet or farm");
         require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set");
         self.mainJettonDeferredWithdrawalDate = 0;
         self.mainJettonDeferredWithdrawalAmount = 0;
@@ -380,7 +384,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Cancels the deferred withdrawal of support jettons and resets the related data. Can be called by either the creator or the royalty wallet.
     receive(msg: StopSupportDeferredWithdrawal) {
-        require(sender() == self.owner || sender() == self.royaltyWalletAddress, "Access is only for the owner or royaltyWallet");
+        require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.farm, "Access is only for the owner or royaltyWallet or farm");
         require(self.supportJettonDeferredWithdrawalDate != 0, "Support jetton deferred withdrawal date is not set");
         self.supportJettonDeferredWithdrawalDate = 0;
         self.recipientDeferredWithdrawalSupportJetton = self.owner;
@@ -782,14 +786,14 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     if (supportAmountToPay > 0) {
                         if (self.jettonSupport) {
-                            self.transferTokensTo(self.contractJettonSupportWalletAddress, self.owner, supportAmountToPay, "Price Growth Buyback");
+                            self.transferTokensTo(self.contractJettonSupportWalletAddress, self.farm, supportAmountToPay, "Price Growth Buyback");
                         } else {
                             message(MessageParameters{
-                                to: self.owner,
+                                to: self.farm,
                                 value: supportAmountToPay,
                                 bounce: true,
                                 mode: SendPayFwdFeesSeparately,
-                                body: "Price Growth Buyback".asComment()
+                                body: PriceGrowthBuyback{}.toCell()
                             });
                         }
                     }
@@ -834,13 +838,20 @@ contract ProofOfCapital with Deployable, Ownable {
         }
     }
 
+
+    receive(msg: SetFarm) {
+        require(sender() == self.owner, "Access is only for the owner");
+        require(self.farm == self.owner, "Farm already set");
+        self.farm = msg.farm;
+    }
+
     // Transfers all unsold jettons to the owner after the lock period ends.
     // Verifies caller's permission and lock time.
     // Resets the contract state to initial parameters.
     receive(msg: WithdrawAllCoins) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
-        self.transferTokensTo(self.contractJettonWalletAddress, sender(), self.contractJettonBalance - self.totalJettonsSold, "Transfer all main jettons to the owner");
+        self.transferTokensTo(self.contractJettonWalletAddress, self.farm, self.contractJettonBalance - self.totalJettonsSold, "Transfer all main jettons to the owner");
         self.currentStep = 0;
         self.contractJettonBalance = 0;
         self.totalJettonsSold = 0;
@@ -858,10 +869,10 @@ contract ProofOfCapital with Deployable, Ownable {
     // Verifies caller's permission, lock time, and support mode.
     // Resets the support balance after the transfer.
     receive(msg: WithdrawAllSupportCoins) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(self.jettonSupport, "Jetton support is not used.");
-        self.transferTokensTo(self.contractJettonSupportWalletAddress, sender(), self.contractSupportBalance, "Send all support balance to the owner.");
+        self.transferTokensTo(self.contractJettonSupportWalletAddress, self.farm, self.contractSupportBalance, "Send all support balance to the owner.");
         self.contractSupportBalance = 0;
     }
 
@@ -869,15 +880,15 @@ contract ProofOfCapital with Deployable, Ownable {
     // Verifies caller's permission and lock time.
     // Resets the support balance and updates the TON balance used for fees.
     receive(msg: WithdrawAllTons) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         let amount: Int = myBalance() - context().value - self.commission;
         message(MessageParameters{
-            to: self.owner,
+            to: self.farm,
             value: amount,
             mode: SendIgnoreErrors | SendRemainingValue,
             bounce: true,
-            body: "Send all balance to the owner".asComment()
+            body: PaybackToFarm{}.toCell()
         });
         self.contractSupportBalance = 0;
     }
@@ -1004,7 +1015,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 responseDestination: recipient,
                 customPayload: null,
                 forwardTonAmount: 1,
-                forwardPayload: forwardPayload
+                forwardPayload: forwardPayload.asSlice()
             }.toCell(),
         });
     }

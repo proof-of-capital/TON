@@ -27,7 +27,7 @@ message(0xf8a7ea5) JettonTransfer {
     responseDestination: Address?;
     customPayload: Cell? = null;
     forwardTonAmount: Int as coins;
-    forwardPayload: Cell?;
+    forwardPayload: Slice as remaining;
 }
 
 message(0x595f07bc) JettonBurn {
@@ -122,3 +122,12 @@ message GetCurrentPrice {
 message GetNumberOfMarketMakers {
     currentNumber: Int as uint8;
 }
+
+
+message SetFarm {
+    farm: Address;
+}
+
+message PaybackToFarm {}
+
+message PriceGrowthBuyback {}
