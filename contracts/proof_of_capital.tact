@@ -606,7 +606,11 @@ contract ProofOfCapital with Deployable, Ownable {
                     }
                     require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
                 }
-                require(value >= self.commission, "Insufficient funds to cover commission");
+                if (self.marketMakerAddressesMap.exists(sender())) {
+                    require(value >= self.commission * 2, "Insufficient funds to cover commission");
+                } else {
+                    require(value >= self.commission, "Insufficient funds to cover commission");
+                }
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
 
                 let totalTokens: Int = self.calculateJettonsToGiveForSupportAmount(value);
@@ -638,7 +642,11 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.contractSupportBalance += netValue;
                 self.totalJettonsSold += totalTokens;
 
-                self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell());
+                if (self.marketMakerAddressesMap.exists(sender())) {
+                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                } else {
+                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission, 1);
+                }
                 self.queryId += 1;
             }
         }
@@ -708,7 +716,11 @@ contract ProofOfCapital with Deployable, Ownable {
                         }
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
-                    require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
+                    if (self.marketMakerAddressesMap.exists(msg.sender)) {
+                        require(value >= self.commission * 2, "Insufficient funds to cover commission for transfer support jettons.");
+                    } else {
+                        require(value >= self.commission, "Insufficient funds to cover commission for transfer support jettons.");
+                    }
                     require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance.");
 
                     let totalTokens: Int = self.calculateJettonsToGiveForSupportAmount(msg.amount);
@@ -726,8 +738,11 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     self.contractSupportBalance += netValue;
                     self.totalJettonsSold += totalTokens;
-
-                    self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell());
+                    if (self.marketMakerAddressesMap.exists(msg.sender)) {
+                        self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                    } else {
+                        self.transferTokensToWithPayload(self.contractJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission, 1);
+                    }
                 }
             } catch (error) {
                 let errorComment: StringBuilder = beginString();
@@ -1017,17 +1032,17 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
         // Sends the specified amount of jettons with a comment to the given address.
-    fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell) {
+    fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell, value: Int, forwardTonAmount: Int) {
         message(MessageParameters{
             to: toAddress,
-            value: self.commission,
+            value: value,
             body: JettonTransfer{
                 queryId: self.queryId,
                 amount: amount,
                 destination: recipient,
                 responseDestination: recipient,
                 customPayload: null,
-                forwardTonAmount: self.commission * 1/3,
+                forwardTonAmount: forwardTonAmount,
                 forwardPayload: payload,
             }.toCell(),
         });
