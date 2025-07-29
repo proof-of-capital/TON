@@ -265,7 +265,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.calculateOffset(self.offsetJettons);
                 self.isInitialized = true;
             }
-        } else {
+        } else if (sender() == self.jettonCollateralMasterAddress) {
             self.contractJettonCollateralWalletAddress = msg.wallet_address;
         }
         if (self.contractLaunchJettonWalletAddress != self.owner && self.contractJettonCollateralWalletAddress != self.owner) {
