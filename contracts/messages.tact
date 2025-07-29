@@ -173,3 +173,24 @@ message GetContractInfoAfterUpdatePoc {
     isActive: Bool;
     currentPrice: Int as coins;
 }
+
+// New messages for jetton transfers with specific payloads
+message MainJettonDeferredWithdrawal {}
+
+message SupportJettonDeferredWithdrawal {}
+
+message SendOtherJettonsToOwner {}
+
+message SendChangeToOwner {}
+
+message SendBackToOwner {}
+
+message SendProfitToOwner {}
+
+message SendProfitToRoyalty {}
+
+message SupportBuyback {}
+
+message TransferAllMainJettonsToOwner {}
+
+message SendAllSupportBalanceToOwner {}
