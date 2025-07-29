@@ -81,7 +81,7 @@ During initialization and deployment of the contract in Tact, the following vari
 |-------------------------------------------|------------------|---------------------------------------------------------------------------|
 | **owner**                                 | `Address`        | Address of the contract owner.                                            |
 | **marketMakerAddress**                    | `Address`        | Address of the market maker.                                              |
-| **jettonMasterAddress**                   | `Address`        | Address of the jetton master contract.                                    |
+| **launchJettonMasterAddress**                   | `Address`        | Address of the jetton master contract.                                    |
 | **returnWalletAddress**                   | `Address`        | Address of the wallet for returning funds.                                |
 | **royaltyWalletAddress**                  | `Address`        | Address of the royalty wallet.                                            |
 | **lockEndTime**                           | `Int as uint64`  | Lock end time (in seconds since the UNIX epoch).                          |
@@ -95,7 +95,7 @@ During initialization and deployment of the contract in Tact, the following vari
 | **offsetJettons**                         | `Int as coins`   | Number of previously sold jettons (historical offset).                    |
 | **controlPeriod**                         | `Int as uint32`  | Duration of the "unlock window" in UNIX seconds.                          |
 | **jettonSupport**                         | `Bool`           | Enables purchasing jettons with other jettons (e.g., USDT).               |
-| **jettonSupportMasterAddress**            | `Address`        | Address of the collateral jetton master contract (if collateral is enabled). |
+| **jettonCollateralMasterAddress**            | `Address`        | Address of the collateral jetton master contract (if collateral is enabled). |
 | **royaltyProfitPercentage**               | `Int as uint16`  | Percentage of profit sent to the royalty wallet.                          |
 
 ---

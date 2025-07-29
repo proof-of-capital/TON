@@ -80,7 +80,7 @@ yarn blueprint run
 |--------------------------------------|--------------------|--------------------------------------------------------------------------|
 | **owner**                            | `Address`          | Адрес владельца контракта.                                               |
 | **marketMakerAddress**               | `Address`          | Адрес маркет-мейкера.                                                    |
-| **jettonMasterAddress**              | `Address`          | Адрес мастер-контракта жетона.                                           |
+| **launchJettonMasterAddress**              | `Address`          | Адрес мастер-контракта жетона.                                           |
 | **returnWalletAddress**              | `Address`          | Адрес кошелька для возврата средств.                                     |
 | **royaltyWalletAddress**             | `Address`          | Адрес кошелька для роялти.                                               |
 | **lockEndTime**                      | `Int as uint64`    | Время окончания блокировки (в секундах с момента эпохи UNIX).            |
@@ -94,7 +94,7 @@ yarn blueprint run
 | **offsetJettons**                    | `Int as coins`     | Количество ранее проданных жетонов (исторический отступ).                |
 | **controlPeriod**                    | `Int as uint32`    | Длительность "окна разлока" в UNIX-секундах.                             |
 | **jettonSupport**                    | `Bool`             | Включает поддержку покупки жетонов за другие жетоны (например, USDT).    |
-| **jettonSupportMasterAddress**       | `Address`          | Адрес мастер-контракта жетона обеспечения (если включено обеспечение).   |
+| **jettonCollateralMasterAddress**       | `Address`          | Адрес мастер-контракта жетона обеспечения (если включено обеспечение).   |
 | **royaltyProfitPercentage**          | `Int as uint16`    | Процент от прибыли, отправляемый на royalty-кошелёк.                     |
 
 ---

@@ -28,7 +28,7 @@ export async function run(provider: NetworkProvider) {
         id,
         address.owner,
         address.marketMaker,
-        address.jettonMasterAddress,
+        address.launchJettonMasterAddress,
         address.returnWalletAddress,
         address.royaltyWalletAddress,
         lockEndTime,

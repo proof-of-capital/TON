@@ -81,7 +81,7 @@ Durante la inicialización y el despliegue del contrato en Tact, se establecen l
 |---------------------------------------|--------------------|---------------------------------------------------------------------------|
 | **owner**                             | `Address`          | Dirección del propietario del contrato.                                   |
 | **marketMakerAddress**                | `Address`          | Dirección del creador de mercado.                                         |
-| **jettonMasterAddress**               | `Address`          | Dirección del contrato maestro del token.                                 |
+| **launchJettonMasterAddress**               | `Address`          | Dirección del contrato maestro del token.                                 |
 | **returnWalletAddress**               | `Address`          | Dirección de la billetera de retorno.                                     |
 | **royaltyWalletAddress**              | `Address`          | Dirección de la billetera de regalías.                                    |
 | **lockEndTime**                       | `Int as uint64`    | Tiempo de fin del bloqueo (en segundos desde la época UNIX).              |
@@ -95,7 +95,7 @@ Durante la inicialización y el despliegue del contrato en Tact, se establecen l
 | **offsetJettons**                     | `Int as coins`     | Cantidad de tokens vendidos previamente (compensación histórica).         |
 | **controlPeriod**                     | `Int as uint32`    | Duración de la "ventana de desbloqueo" en segundos UNIX.                  |
 | **jettonSupport**                     | `Bool`             | Activa la compatibilidad para compras de tokens con otros tokens (ej., USDT).  |
-| **jettonSupportMasterAddress**        | `Address`          | Dirección del contrato maestro del token como garantía (si está habilitado). |
+| **jettonCollateralMasterAddress**        | `Address`          | Dirección del contrato maestro del token como garantía (si está habilitado). |
 | **royaltyProfitPercentage**           | `Int as uint16`    | Porcentaje del beneficio enviado a la billetera de regalías.              |
 
 ---

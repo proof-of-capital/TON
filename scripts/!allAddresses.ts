@@ -2,7 +2,7 @@ import { Address } from '@ton/core';
 
 export const owner = Address.parse("U...");
 export const marketMaker = Address.parse("U...");
-export const jettonMasterAddress = Address.parse("E...");
+export const launchJettonMasterAddress = Address.parse("E...");
 export const jettonSupportMaster = Address.parse("E...");
 export const returnWalletAddress = Address.parse("U...");
 // Check the current royalty address on proofofcapital.org
