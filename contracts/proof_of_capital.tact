@@ -265,7 +265,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.calculateOffset(self.offsetJettons);
                 self.isInitialized = true;
             }
-        } else if (sender() == self.jettonCollateralMasterAddress) {
+        } else if () {
             self.contractJettonCollateralWalletAddress = msg.wallet_address;
         }
         if (self.contractLaunchJettonWalletAddress != self.owner && self.contractJettonCollateralWalletAddress != self.owner) {
@@ -1026,7 +1026,6 @@ contract ProofOfCapital with Deployable, Ownable {
         message(MessageParameters{
             to: toAddress,
             value: value,
-            mode: SendPayFwdFeesSeparately,
             body: JettonTransfer{
                 queryId: self.queryId,
                 amount: amount,
