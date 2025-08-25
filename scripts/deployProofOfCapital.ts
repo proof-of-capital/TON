@@ -43,7 +43,9 @@ export async function run(provider: NetworkProvider) {
         controlPeriod,
         jettonSupport,
         address.jettonSupportMaster,
-        royaltyProfitPercent)
+        royaltyProfitPercent,
+        200n,
+        6n)
       );
       console.log(id)
       console.log(proofOfCapital.address.toString())

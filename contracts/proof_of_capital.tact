@@ -430,11 +430,12 @@ contract ProofOfCapital with Deployable, Ownable {
         require(msg.newOwner != newAddress(0, 0), "New owner address cannot be null.");
         require((!self.oldContractAddressesMap.exists(msg.newOwner)), "Old contract address cannot be equal to any of addresses in contract");
         if (self.owner == self.reserveOwner) {
-            self.owner = msg.newOwner;
             self.reserveOwner = msg.newOwner;
-        } else {
-            self.owner = msg.newOwner;
         }
+        if (self.owner == self.farm) {
+            self.farm = msg.newOwner;
+        }
+        self.owner = msg.newOwner;
     }
 
     // Assigns a new the reserve owner. Only the current the reserve owner can perform this action.
@@ -735,8 +736,8 @@ contract ProofOfCapital with Deployable, Ownable {
                     let netValue: Int = msg.amount - self.actualProfit;
 
                     if (self.profitInTime) {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToOwner{}.toCell(), self.commission, self.commission / 5);
                         self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.royaltyWalletAddress, royaltyProfit, SendProfitToRoyalty{}.toCell(), self.commission, self.commission / 5);
+                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToTheOwner{}.toCell(), self.commission, self.commission / 5);
                     } else {
                         self.ownerSupportBalance += creatorProfit;
                         self.royaltySupportBalance += royaltyProfit;
@@ -852,8 +853,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
 
     receive(msg: SetFarm) {
-        require(sender() == self.owner, "Access is only for the owner");
-        require(self.farm == self.owner, "Farm already set");
+        require(sender() == self.farm, "Access is only for the owner");
         self.farm = msg.farm;
     }
 
@@ -924,7 +924,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         if (sender() == self.owner()) {
             if (self.jettonSupport) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.ownerSupportBalance, SendProfitToOwner{}.toCell(), self.commission * 2, self.commission );
+                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.ownerSupportBalance, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission );
                 self.ownerSupportBalance = 0;
             } else {
                 message(MessageParameters{

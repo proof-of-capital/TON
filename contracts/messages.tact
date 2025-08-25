@@ -185,7 +185,7 @@ message SendChangeToOwner {}
 
 message SendBackToOwner {}
 
-message SendProfitToOwner {}
+message SendProfitToTheOwner {}
 
 message SendProfitToRoyalty {}
 
