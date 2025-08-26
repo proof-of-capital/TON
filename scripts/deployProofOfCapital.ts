@@ -16,6 +16,8 @@ export async function run(provider: NetworkProvider) {
     const controlPeriod = 60n;
     const jettonSupport = true;
     const royaltyProfitPercent = 200n;
+    const coefficientProfit = 200n;
+    const jettonDecimals = toNano(1n);
 
     console.log("-------")
     console.log(lockEndTime)
@@ -44,8 +46,8 @@ export async function run(provider: NetworkProvider) {
         jettonSupport,
         address.jettonSupportMaster,
         royaltyProfitPercent,
-        200n,
-        6n)
+        coefficientProfit,
+        jettonDecimals)
       );
       console.log(id)
       console.log(proofOfCapital.address.toString())
@@ -54,7 +56,7 @@ export async function run(provider: NetworkProvider) {
     await proofOfCapital.send(
         provider.sender(),
         {
-            value: toNano('0.06'),
+            value: toNano('0.1'),
         },
         {
             $$type: 'Deploy',

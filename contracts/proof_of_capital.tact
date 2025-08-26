@@ -817,7 +817,7 @@ contract ProofOfCapital with Deployable, Ownable {
                         }
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
-                    require(value > self.commission, "Amount must be greater than minimal");
+                    require(value > 2 * self.commission, "Amount must be greater than minimal");
                     let tokensAvailableForBuyback: Int = self.totalJettonsSold - max(self.offsetJettons, self.jettonsEarned);
                     let tokenForBuyback: Int = msg.amount;
                     require(tokensAvailableForBuyback > 0, "Not have tokensAvailableForBuyback");
@@ -1023,6 +1023,8 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Sends the specified amount of jettons with a comment to the given address.
     fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell, value: Int, forwardTonAmount: Int) {
+
+        let forwardPayload = beginCell().storeBit(false).storeSlice(payload.asSlice()).asSlice();
         message(MessageParameters{
             to: toAddress,
             value: value,
@@ -1033,10 +1035,10 @@ contract ProofOfCapital with Deployable, Ownable {
                 responseDestination: recipient,
                 customPayload: null,
                 forwardTonAmount: forwardTonAmount,
-                forwardPayload: payload.asSlice(),
+                forwardPayload: forwardPayload,
             }.toCell(),
         });
-    }
+    }   
 
     // Returns the profit percentage depending on the current step and the trend change step.
     fun calculateProfit(currentStep: Int): Int {
