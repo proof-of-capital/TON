@@ -361,7 +361,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
         let amount: Int = min(self.mainJettonDeferredWithdrawalAmount, self.contractJettonBalance - self.totalJettonsSold);
         if (amount > 0) {
-            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalMainJetton, amount, MainJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission);
+            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalMainJetton, amount, MainJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission * 19);
         }
         
         self.contractJettonBalance -= amount;
@@ -406,7 +406,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(now() <= self.supportJettonDeferredWithdrawalDate + SEVEN_DAYS, "Support jetton deferred withdrawal period is finished");
 
         if (self.jettonSupport) {
-            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, SupportJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission);
+            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, SupportJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission * 19);
         } else {
             message(MessageParameters{
                 to: self.recipientDeferredWithdrawalSupportJetton,
@@ -503,7 +503,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Verifies the uniqueness and validity of the new addresses.
     // Intended for withdrawing third-party jettons mistakenly sent to the contract.
     receive(msg: AddAdditionalJettonData) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(sender() == self.farm, "Access is only for the owner");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in mesage cannot be zero");
         if (now() < self.lockEndTime) {
@@ -511,7 +511,7 @@ contract ProofOfCapital with Deployable, Ownable {
             require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in mesage cannot be support jetton wallet");
         }
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
-        self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.owner, msg.amount, SendOtherJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
+        self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.farm, msg.amount, SendOtherJettonsToFarm{}.toCell(), self.commission * 2, self.commission);
         self.queryId += 1;
     }
 
@@ -871,7 +871,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
 
     receive(msg: SetFarm) {
-        require(sender() == self.farm, "Access is only for the owner");
+        require(sender() == self.farm, "Access is only for the farm");
         self.farm = msg.farm;
     }
 

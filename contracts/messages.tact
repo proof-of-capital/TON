@@ -179,7 +179,7 @@ message MainJettonDeferredWithdrawal {}
 
 message SupportJettonDeferredWithdrawal {}
 
-message SendOtherJettonsToOwner {}
+message SendOtherJettonsToFarm {}
 
 message SendChangeToOwner {}
 
