@@ -17,7 +17,7 @@
 // All royalties collected are automatically used to repurchase the project's core token, as
 // specified on the website, and are returned to the contract.
 
-// This is the third version of the contract. It introduces the following features: the ability to choose any jetton as support, build support with an offset,
+// This is the third version of the contract. It introduces the following features: the ability to choose any jetton as collateral, build collateral with an offset,
 // perform delayed withdrawals (and restrict them if needed), assign multiple market makers, modify royalty conditions, and withdraw profit on request.
 
 
@@ -58,8 +58,8 @@ contract ProofOfCapital with Deployable, Ownable {
     id: Int as uint256; // Unique contract identifier, passed during deployment and used to initialize the contract address when choosing a special address (default is 0)
     owner: Address; // Creator's address — the main owner of the contract, who can manage it and perform certain actions (token deposits, withdrawals, setting locks, changing participants)
     reserveOwner: Address; // Backup owner's address, who can replace the creator (in case access to the main owner is lost) and replace themselves
-    launchJettonMasterAddress: Address; // Address of the jetton master contract, used to obtain the wallet address of the main jetton
-    returnWalletAddress: Address; // Return wallet address, which can return tokens to the contract and receive support from lower levels
+    launchJettonMasterAddress: Address; // Address of the jetton master contract, used to obtain the wallet address of the launch jetton
+    returnWalletAddress: Address; // Return wallet address, which can return tokens to the contract and receive collateral from lower levels
     royaltyWalletAddress: Address; // Royalty wallet address, which receives royalties from revenue-generating operations
     lockEndTime: Int as uint64; // UNIX time until which certain actions are blocked (token withdrawals, purchases, sales by regular users, etc.)
     initialPricePerToken: Int as coins; // Initial price of a single jetton
@@ -75,8 +75,8 @@ contract ProofOfCapital with Deployable, Ownable {
     profitPercentage: Int as uint16; // Profit percentage to be distributed between the owner and the royalty wallet
     queryId: Int as uint64; // Identifier of the last transaction
     totalJettonsSold: Int as coins; // Total number of jettons sold
-    contractSupportBalance: Int as coins; // Balance of support (backing) jettons
-    contractJettonBalance: Int as coins; // Balance of the contract's main jetton
+    contractCollateralBalance: Int as coins; // Balance of collateral jettons
+    contractJettonBalance: Int as coins; // Balance of the contract's launch jetton
     jettonsEarned: Int as coins; // Number of earned jettons — these are the jettons returned to the contract from the returnWalletAddress
 
     quantityJettonsPerLevel: Int as coins; // Number of jettons at the current level
@@ -91,7 +91,7 @@ contract ProofOfCapital with Deployable, Ownable {
     quantityJettonsPerLevelEarned: Int as coins; // Number of jettons at the current return level
     currentPriceEarned: Int as coins; // Current price of the return jetton
 
-    contractLaunchJettonWalletAddress: Address; // Wallet address of the contract's main jetton
+    contractLaunchJettonWalletAddress: Address; // Wallet address of the contract's launch jetton
     // Variables for withdrawing third-party jettons that may accidentally be sent to the contract
     additionalJettonWalletAddress: Address; // Wallet address of the contract's additional jetton
 
@@ -104,10 +104,10 @@ contract ProofOfCapital with Deployable, Ownable {
 
     callJettonsID: Int as uint8; // Call counter for the initial deposit (1 – first deposit, 0 – all subsequent ones)
 
-    // New support
-    jettonSupport: Bool; // Jetton support flag. If False — support is provided in TON.
-    jettonCollateralMasterAddress: Address; // Master contract address of the support jetton
-    contractJettonCollateralWalletAddress: Address; // Contract's support jetton wallet address
+    // New collateral
+    jettonCollateral: Bool; // Jetton collateral flag. If False — collateral is provided in TON.
+    jettonCollateralMasterAddress: Address; // Master contract address of the collateral jetton
+    contractJettonCollateralWalletAddress: Address; // Contract's collateral jetton wallet address
 
     // Storage of additional market maker addresses
     marketMakerAddressesMap: map<Address, Int as uint8>; // Map of market maker addresses
@@ -116,8 +116,8 @@ contract ProofOfCapital with Deployable, Ownable {
     // Profit withdrawal
     ownerTonBalance: Int as coins; // Owner's profit in TON
     royaltyTonBalance: Int as coins; // Royalty profit in TON
-    ownerSupportBalance: Int as coins; // Owner's profit in support jettons
-    royaltySupportBalance: Int as coins; // Royalty profit in support jettons
+    ownerCollateralBalance: Int as coins; // Owner's profit in collateral jettons
+    royaltyCollateralBalance: Int as coins; // Royalty profit in collateral jettons
     profitInTime: Bool; // Flag indicating whether profit is withdrawn immediately or upon request (true – on request, false – immediately)
     royaltyProfitPercent: Int as uint16; // Royalty profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
     creatorProfitPercent: Int as uint16; // Owner profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
@@ -127,12 +127,12 @@ contract ProofOfCapital with Deployable, Ownable {
     canWithdrawal: Bool = true; // Flag indicating whether early delayed withdrawal is allowed (true – allowed, false – prohibited)
 
     // Deferred withdrawal
-    mainJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of deferred withdrawal for the main jetton
-    mainJettonDeferredWithdrawalAmount: Int as coins = 0; // Amount of the main jetton for deferred withdrawal
-    recipientDeferredWithdrawalMainJetton: Address; // Recipient address for the deferred withdrawal of the main jetton
+    launchJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of deferred withdrawal for the launch jetton
+    launchJettonDeferredWithdrawalAmount: Int as coins = 0; // Amount of the launch jetton for deferred withdrawal
+    recipientDeferredWithdrawalLaunchJetton: Address; // Recipient address for the deferred withdrawal of the launch jetton
 
-    supportJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of the waiting period for delayed withdrawal of the support token
-    recipientDeferredWithdrawalSupportJetton: Address; // Recipient address for the deferred withdrawal of the support jetton
+    collateralJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of the waiting period for delayed withdrawal of the collateral token
+    recipientDeferredWithdrawalCollateralJetton: Address; // Recipient address for the deferred withdrawal of the collateral jetton
     jettonDecimals: Int as uint32; // Number of decimals for the jetton
     farm: Address; // Farm address
 
@@ -154,7 +154,7 @@ contract ProofOfCapital with Deployable, Ownable {
         profitPercentage: Int,
         offsetJettons: Int,
         controlPeriod: Int,
-        jettonSupport: Bool,
+        jettonCollateral: Bool,
         jettonCollateralMasterAddress: Address,
         royaltyProfitPercent: Int,
         coefficientProfit: Int,
@@ -179,7 +179,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.levelDecreaseMultiplierafterTrend = levelDecreaseMultiplierafterTrend;
         self.profitPercentage = profitPercentage;
         self.coefficientProfit = coefficientProfit;
-        self.jettonSupport = jettonSupport;
+        self.jettonCollateral = jettonCollateral;
         self.jettonCollateralMasterAddress = jettonCollateralMasterAddress;
         self.contractJettonCollateralWalletAddress = owner;
         self.jettonDecimals = jettonDecimals;
@@ -188,7 +188,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.contractJettonBalance = 0;
         self.jettonsEarned = 0;
         self.queryId = 0;
-        self.contractSupportBalance = 0;
+        self.contractCollateralBalance = 0;
         self.additionalJettonWalletAddress = owner;
         self.totalJettonsSold = 0;
         self.quantityJettonsPerLevel = firstLevelJettonQuantity;
@@ -217,15 +217,15 @@ contract ProofOfCapital with Deployable, Ownable {
 
         self.ownerTonBalance = 0;
         self.royaltyTonBalance = 0;
-        self.ownerSupportBalance = 0;
-        self.royaltySupportBalance = 0;
+        self.ownerCollateralBalance = 0;
+        self.royaltyCollateralBalance = 0;
         self.profitInTime = true;
 
         self.royaltyProfitPercent = royaltyProfitPercent;
         self.creatorProfitPercent = MAX_PERCENT - royaltyProfitPercent;
 
-        self.recipientDeferredWithdrawalMainJetton = owner;
-        self.recipientDeferredWithdrawalSupportJetton = owner;
+        self.recipientDeferredWithdrawalLaunchJetton = owner;
+        self.recipientDeferredWithdrawalCollateralJetton = owner;
 
         self.farm = owner;
 
@@ -246,15 +246,15 @@ contract ProofOfCapital with Deployable, Ownable {
         });
     }
 
-    // Receives and sends messages to jetton master contracts, stores the addresses of the main and support jetton wallets.
+    // Receives and sends messages to jetton master contracts, stores the addresses of the launch and collateral jetton wallets.
     // Change flag isInitialized after all jetton wallets received.
     // Triggers the offset calculation function.
     receive(msg: TakeWalletAddress) {
-        require(sender() == self.launchJettonMasterAddress || sender() == self.jettonCollateralMasterAddress, "Invalid main or support jetton master sender");
+        require(sender() == self.launchJettonMasterAddress || sender() == self.jettonCollateralMasterAddress, "Invalid lounch or collateral jetton master sender");
         require(!self.isInitialized, "Contract jetton wallets are already initialized");
         if (sender() == self.launchJettonMasterAddress) {
             self.contractLaunchJettonWalletAddress = msg.wallet_address;
-            if (self.jettonSupport) {
+            if (self.jettonCollateral) {
                 message(MessageParameters{
                     to: self.jettonCollateralMasterAddress,
                     value: 0,
@@ -322,104 +322,104 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
 
-    // Schedules a deferred withdrawal of the main jetton in 30 days to the specified address.
+    // Schedules a deferred withdrawal of the launch jetton in 30 days to the specified address.
     receive(msg: JettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
         require(msg.amount > 0 && msg.recipientAddress != newAddress(0, 0), "Recipient address and jetton amount cannot be zero");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
-        require(self.mainJettonDeferredWithdrawalAmount == 0, "Main jetton deferred withdrawal is already scheduled");
-        self.recipientDeferredWithdrawalMainJetton = msg.recipientAddress;
-        self.mainJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
-        self.mainJettonDeferredWithdrawalAmount = msg.amount;
+        require(self.launchJettonDeferredWithdrawalAmount == 0, "Launch jetton deferred withdrawal is already scheduled");
+        self.recipientDeferredWithdrawalLaunchJetton = msg.recipientAddress;
+        self.launchJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
+        self.launchJettonDeferredWithdrawalAmount = msg.amount;
         message(MessageParameters{
             to: msg.recipientAddress,
             value: self.commission,
             bounce: true,
             mode: SendPayFwdFeesSeparately,
-            body: "Requested withdrawal of main jettons to recipient of current transaction after 30 days".asComment()
+            body: "Requested withdrawal of launch jettons to recipient of current transaction after 30 days".asComment()
         });
     }
 
-    // Cancels the delayed withdrawal of the main token and resets the associated data. It can be used by both the creator and the royalty wallet.
+    // Cancels the delayed withdrawal of the launch jetton and resets the associated data. It can be used by both the creator and the royalty wallet.
     receive(msg: StopJettonDeferredWithdrawal) {
         require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.farm, "Access is only for the owner or royaltyWallet or farm");
-        require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set");
-        self.mainJettonDeferredWithdrawalDate = 0;
-        self.mainJettonDeferredWithdrawalAmount = 0;
-        self.recipientDeferredWithdrawalMainJetton = self.owner;
-        self.notify("Main jetton deferred withdrawal stopped and date reset".asComment());
+        require(self.launchJettonDeferredWithdrawalDate != 0, "Launch jetton deferred withdrawal date is not set");
+        self.launchJettonDeferredWithdrawalDate = 0;
+        self.launchJettonDeferredWithdrawalAmount = 0;
+        self.recipientDeferredWithdrawalLaunchJetton = self.owner;
+        self.notify("Launch jetton deferred withdrawal stopped and date reset".asComment());
     }
 
-    // Confirms and executes the deferred withdrawal of main jettons after the waiting period expires.
+    // Confirms and executes the deferred withdrawal of launch jettons after the waiting period expires.
     receive(msg: ConfirmJettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
         require(context().value >= self.commission * 20, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
-        require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set or reset");
-        require(now() >= self.mainJettonDeferredWithdrawalDate, "Main jetton deferred withdrawal date is not arrived yet");
-        require(now() <= self.mainJettonDeferredWithdrawalDate + SEVEN_DAYS, "Main jetton deferred withdrawal period is finished");
+        require(self.launchJettonDeferredWithdrawalDate != 0, "Launch jetton deferred withdrawal date is not set or reset");
+        require(now() >= self.launchJettonDeferredWithdrawalDate, "Launch jetton deferred withdrawal date is not arrived yet");
+        require(now() <= self.launchJettonDeferredWithdrawalDate + SEVEN_DAYS, "Launch jetton deferred withdrawal period is finished");
 
-        let amount: Int = min(self.mainJettonDeferredWithdrawalAmount, self.contractJettonBalance - self.totalJettonsSold);
+        let amount: Int = min(self.launchJettonDeferredWithdrawalAmount, self.contractJettonBalance - self.totalJettonsSold);
         if (amount > 0) {
-            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalMainJetton, amount, MainJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission * 19);
+            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalLaunchJetton, amount, LaunchJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission * 19);
         }
         
         self.contractJettonBalance -= amount;
-        self.mainJettonDeferredWithdrawalDate = 0;
-        self.mainJettonDeferredWithdrawalAmount = 0;
-        self.recipientDeferredWithdrawalMainJetton = self.owner;
+        self.launchJettonDeferredWithdrawalDate = 0;
+        self.launchJettonDeferredWithdrawalAmount = 0;
+        self.recipientDeferredWithdrawalLaunchJetton = self.owner;
     }
 
-    // Schedules a deferred withdrawal of the support jettons in 30 days to the specified address.
-    receive(msg: SupportDeferredWithdrawal) {
+    // Schedules a deferred withdrawal of the collateral jettons in 30 days to the specified address.
+    receive(msg: CollateralDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(msg.recipientAddress != newAddress(0, 0), "Recipient address cannot be null");
-        require(self.supportJettonDeferredWithdrawalDate == 0, "Support jetton deferred withdrawal is already scheduled");
-        self.recipientDeferredWithdrawalSupportJetton = msg.recipientAddress;
-        self.supportJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
+        require(self.collateralJettonDeferredWithdrawalDate == 0, "Collateral jetton deferred withdrawal is already scheduled");
+        self.recipientDeferredWithdrawalCollateralJetton = msg.recipientAddress;
+        self.collateralJettonDeferredWithdrawalDate = now() + THIRTY_DAYS;
         message(MessageParameters{
             to: msg.recipientAddress,
             value: self.commission,
             bounce: true,
             mode: SendPayFwdFeesSeparately,
-            body: "Requested withdrawal of support jettons to recipient of current transaction after 30 days".asComment()
+            body: "Requested withdrawal of collateral jettons to recipient of current transaction after 30 days".asComment()
         });
     }
 
-    // Cancels the deferred withdrawal of support jettons and resets the related data. Can be called by either the creator or the royalty wallet.
-    receive(msg: StopSupportDeferredWithdrawal) {
+    // Cancels the deferred withdrawal of collateral jettons and resets the related data. Can be called by either the creator or the royalty wallet.
+    receive(msg: StopCollateralDeferredWithdrawal) {
         require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.farm, "Access is only for the owner or royaltyWallet or farm");
-        require(self.supportJettonDeferredWithdrawalDate != 0, "Support jetton deferred withdrawal date is not set");
-        self.supportJettonDeferredWithdrawalDate = 0;
-        self.recipientDeferredWithdrawalSupportJetton = self.owner;
-        self.notify("Support jetton deferred withdrawal stopped and date reset".asComment());
+        require(self.collateralJettonDeferredWithdrawalDate != 0, "Collateral jetton deferred withdrawal date is not set");
+        self.collateralJettonDeferredWithdrawalDate = 0;
+        self.recipientDeferredWithdrawalCollateralJetton = self.owner;
+        self.notify("Collateral jetton deferred withdrawal stopped and date reset".asComment());
     }
 
-    // Confirms and executes the deferred withdrawal of support jettons after the waiting period expires.
-    receive(msg: ConfirmSupportDeferredWithdrawal) {
+    // Confirms and executes the deferred withdrawal of collateral jettons after the waiting period expires.
+    receive(msg: ConfirmCollateralDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
         require(context().value >= self.commission * 20, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
-        require(self.supportJettonDeferredWithdrawalDate != 0, "Support jetton deferred withdrawal date is not set or reset");
-        require(now() >= self.supportJettonDeferredWithdrawalDate, "Support jetton deferred withdrawal date is not arrived yet");
-        require(now() <= self.supportJettonDeferredWithdrawalDate + SEVEN_DAYS, "Support jetton deferred withdrawal period is finished");
+        require(self.collateralJettonDeferredWithdrawalDate != 0, "Collateral jetton deferred withdrawal date is not set or reset");
+        require(now() >= self.collateralJettonDeferredWithdrawalDate, "Collateral jetton deferred withdrawal date is not arrived yet");
+        require(now() <= self.collateralJettonDeferredWithdrawalDate + SEVEN_DAYS, "Collateral jetton deferred withdrawal period is finished");
 
-        if (self.jettonSupport) {
-            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, SupportJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission * 19);
+        if (self.jettonCollateral) {
+            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalCollateralJetton, self.contractCollateralBalance, CollateralJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission * 19);
         } else {
             message(MessageParameters{
-                to: self.recipientDeferredWithdrawalSupportJetton,
-                value: self.contractSupportBalance,
+                to: self.recipientDeferredWithdrawalCollateralJetton,
+                value: self.contractCollateralBalance,
                 bounce: true,
                 mode: SendPayFwdFeesSeparately,
-                body: "Support jetton deferred withdrawal".asComment()
+                body: "Collateral jetton deferred withdrawal".asComment()
             });
         }
 
-        self.contractSupportBalance = 0;
-        self.supportJettonDeferredWithdrawalDate = 0;
-        self.recipientDeferredWithdrawalSupportJetton = self.owner;
+        self.contractCollateralBalance = 0;
+        self.collateralJettonDeferredWithdrawalDate = 0;
+        self.recipientDeferredWithdrawalCollateralJetton = self.owner;
         self.isActive = false;
     }
 
@@ -507,8 +507,8 @@ contract ProofOfCapital with Deployable, Ownable {
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in mesage cannot be zero");
         if (now() < self.lockEndTime) {
-            require(msg.newAdditionalJettonWalletAddress != self.contractJettonCollateralWalletAddress, "Additional jetton wallet address in mesage cannot be support jetton wallet");
-            require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in mesage cannot be support jetton wallet");
+            require(msg.newAdditionalJettonWalletAddress != self.contractJettonCollateralWalletAddress, "Additional jetton wallet address in mesage cannot be collateral jetton wallet");
+            require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in mesage cannot be collateral jetton wallet");
         }
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
         self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.farm, msg.amount, SendOtherJettonsToFarm{}.toCell(), self.commission * 2, self.commission);
@@ -556,8 +556,8 @@ contract ProofOfCapital with Deployable, Ownable {
             msg.oldContractAddress != self.contractJettonCollateralWalletAddress &&
             msg.oldContractAddress != self.returnWalletAddress &&
             msg.oldContractAddress != self.royaltyWalletAddress &&
-            msg.oldContractAddress != self.recipientDeferredWithdrawalMainJetton &&
-            msg.oldContractAddress != self.recipientDeferredWithdrawalSupportJetton &&
+            msg.oldContractAddress != self.recipientDeferredWithdrawalLaunchJetton &&
+            msg.oldContractAddress != self.recipientDeferredWithdrawalCollateralJetton &&
             (!self.marketMakerAddressesMap.exists(msg.oldContractAddress)),
             "Old contract address cannot be equal to any of addresses in contract"
         );
@@ -571,29 +571,30 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Main handler for incoming messages without parameters (for TON).
     //
-    // The logic depends on the support mode (self.jettonSupport) and the sender's address:
-    // - If support with jettons is enabled and the call comes from the owner or the old contract (oldContractAddress),
-    //   it confirms that support is active (to protect from inconsistent calls), and ensures the contract is active and jetton wallets are initialized.
-    // - If support with jettons is disabled, calls from the owner or old contract can adjust the support balance
-    //   if there is a jetton offset, reducing the supportBalance debt.
+    // The logic depends on the collateral mode (self.jettonCollateral) and the sender's address:
+    // - If collateral with jettons is enabled and the call comes from the owner or the old contract (oldContractAddress),
+    //   it confirms that collateral is active (to protect from inconsistent calls), and ensures the contract is active and jetton wallets are initialized.
+    // - If collateral with jettons is disabled, calls from the owner or old contract can adjust the collateral balance
+    //   if there is a jetton offset, reducing the collateralBalance debt.
     // - For other calls (e.g., trades from MarketMaker or whitelisted addresses), the following checks apply:
     //   lockEndTime restriction, verification of sender permissions in marketMakerAddressesMap,
     //   and control of fees and balances.
     // - Also includes logic to return change (excess funds) to the owner.
     //
-    // Calculates the amount of main jettons to issue for the received funds (after deducting fees),
+    // Calculates the amount of launch jettons to issue for the received funds (after deducting fees),
     // distributes the profit between the creator and the royalty wallet, and depending on the profit payout mode,
     // either immediately transfers the profit or accumulates it for later withdrawal.
     // Then updates the contract balance and sends jettons to the sender.
 
     receive() {
-        if (self.jettonSupport && (sender() == self.owner || sender() == self.oldContractAddress)) {
-            require(self.jettonSupport, "Jetton support is not used.");
+        if (self.jettonCollateral && (sender() == self.owner || sender() == self.oldContractAddress)) {
+            require(self.jettonCollateral, "Jetton collateral is not used.");
         } else {
             require(self.isInitialized, "Contract jetton wallets are not initialized yet");
-            require(!self.jettonSupport, "Jetton support is used");
-            let value = context().value;
-            let gasMinimum = 4 + value / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
+            require(!self.jettonCollateral, "Jetton collateral is used");
+            let value = context().value - 4 * self.commission;
+            require(value >= self.commission, "Insufficient funds to cover commission");
+            let gasMinimum = value / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
             require(gasMinimum < 20, "Too much value for gas");
             if (self.profitInTime) {
                 value -= self.commission * (2 + gasMinimum);
@@ -604,9 +605,9 @@ contract ProofOfCapital with Deployable, Ownable {
             if (sender() == self.owner || sender() == self.oldContractAddress) {
                 if (self.offsetJettons - self.jettonsEarned > 0)
                 {
-                    let deltaSupportBalance = self.calculateChangeOffsetSupport(value);
-                    self.contractSupportBalance += deltaSupportBalance;
-                    let change = value - deltaSupportBalance;
+                    let deltaCollateralBalance = self.calculateChangeOffsetCollateral(value);
+                    self.contractCollateralBalance += deltaCollateralBalance;
+                    let change = value - deltaCollateralBalance;
                     if (change > 0) {
                         message(MessageParameters{
                             to: self.owner,
@@ -632,7 +633,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 }
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
 
-                let totalTokens: Int = self.calculateJettonsToGiveForSupportAmount(value);
+                let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(value);
                 let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
                 let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / MAX_PERCENT;
 
@@ -658,7 +659,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 let netValue: Int = value - self.actualProfit;
 
-                self.contractSupportBalance += netValue;
+                self.contractCollateralBalance += netValue;
                 self.totalJettonsSold += totalTokens;
 
                 self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
@@ -673,34 +674,34 @@ contract ProofOfCapital with Deployable, Ownable {
     // Executes logic based on the notification sender and the contract state.
     //
     // Main scenarios:
-    // 1. If the notification comes from the support jetton wallet (contractJettonCollateralWalletAddress):
-    //    - Ensures support mode is active and the sender address is valid.
+    // 1. If the notification comes from the collateral jetton wallet (contractJettonCollateralWalletAddress):
+    //    - Ensures collateral mode is active and the sender address is valid.
     //    - If the transfer is from the owner or oldContractAddress:
-    //      - If a positive offset in support jettons exists, the support balance is increased and the support jettons are accounted for.
+    //      - If a positive offset in collateral jettons exists, the collateral balance is increased and the collateral jettons are accounted for.
     //    - Otherwise:
     //      - Verifies the sender is an authorized MarketMaker (depending on lock period or unlock window).
     //      - Updates the control day if needed.
-    //      - Checks fee payment and sufficient support jetton balance.
-    //      - Calculates the number of main jettons to issue, distributes profit to creator and royalty.
-    //      - Updates the support balance and total sold jettons.
-    //      - Sends main jettons to the sender.
-    //      - Updates the total support jetton amount.
+    //      - Checks fee payment and sufficient collateral jetton balance.
+    //      - Calculates the number of launch jettons to issue, distributes profit to creator and royalty.
+    //      - Updates the collateral balance and total sold jettons.
+    //      - Sends launch jettons to the sender.
+    //      - Updates the total collateral jetton amount.
     //
-    // 2. If the notification comes from the main jetton wallet (contractLaunchJettonWalletAddress):
+    // 2. If the notification comes from the launch jetton wallet (contractLaunchJettonWalletAddress):
     //    - Ensures consistency of jetton states (earned and offset).
     //    - If the transfer is from the owner or oldContractAddress:
-    //      - Depending on the internal counter, updates the main jetton balance or triggers offset recalculation.
+    //      - Depending on the internal counter, updates the launch jetton balance or triggers offset recalculation.
     //    - If the transfer is from returnWalletAddress (buyback):
     //      - Checks commission sufficiency.
-    //      - Calculates the support amount to be paid based on the amount of jettons being bought back and current offset.
-    //      - Updates support and main jetton balances.
+    //      - Calculates the collateral amount to be paid based on the amount of jettons being bought back and current offset.
+    //      - Updates collateral and launch jetton balances.
     //      - If required, sends funds to the owner's address (via TON or jetton transfer).
     //    - Otherwise:
     //      - Checks MarketMaker permissions or unlock window conditions.
     //      - Verifies sufficient funds for jetton buyback.
-    //      - Calculates the amount of support jettons to return and updates support and sold jetton balances.
-    //      - Sends funds back to the user (via TON or jetton, depending on the support mode).
-    //      - Updates the total amount of support jettons.
+    //      - Calculates the amount of collateral jettons to return and updates collateral and sold jetton balances.
+    //      - Sends funds back to the user (via TON or jetton, depending on the collateral mode).
+    //      - Updates the total amount of collateral jettons.
     //
     // Always checks that the contract is active and initialized, otherwise throws an error.
     // If any error occurs (while the contract is active and initialized), the transferred jettons are refunded to the sender with a specified reason.
@@ -710,19 +711,19 @@ contract ProofOfCapital with Deployable, Ownable {
         require(self.isActive, "Contract is not active");
         if (sender() == self.contractJettonCollateralWalletAddress) {
             try {
-                require(self.jettonSupport, "Jettons support is not used or notification not from your jetton support wallet!");
+                require(self.jettonCollateral, "Jettons collateral is not used or notification not from your jetton collateral wallet!");
                 let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
                 require(gasMinimum < 20, "Too much value for gas");
                 if (self.profitInTime) {
-                    require(value >= self.commission * (2 + gasMinimum), "Insufficient funds to cover commission for transfer support jettons.");
+                    require(value >= self.commission * (2 + gasMinimum), "Insufficient funds to cover commission for transfer collateral jettons.");
                 } else {
-                    require(value >= self.commission * gasMinimum, "Insufficient funds to cover commission for transfer support jettons.");
+                    require(value >= self.commission * gasMinimum, "Insufficient funds to cover commission for transfer collateral jettons.");
                 }
                 if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
                     if (self.offsetJettons - self.jettonsEarned > 0) {
-                        let deltaSupportBalance = self.calculateChangeOffsetSupport(msg.amount);
-                        self.contractSupportBalance += deltaSupportBalance;
-                        let change = msg.amount - deltaSupportBalance;
+                        let deltaCollateralBalance = self.calculateChangeOffsetCollateral(msg.amount);
+                        self.contractCollateralBalance += deltaCollateralBalance;
+                        let change = msg.amount - deltaCollateralBalance;
                         if (change > 0) {
                             self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, change, SendChangeToOwner{}.toCell(), self.commission * 2, self.commission);
                         }
@@ -738,7 +739,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     }
                     require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance.");
 
-                    let totalTokens: Int = self.calculateJettonsToGiveForSupportAmount(msg.amount);
+                    let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(msg.amount);
                     let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
                     let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / MAX_PERCENT;
                     let netValue: Int = msg.amount - self.actualProfit;
@@ -747,11 +748,11 @@ contract ProofOfCapital with Deployable, Ownable {
                         self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.royaltyWalletAddress, royaltyProfit, SendProfitToRoyalty{}.toCell(), self.commission, self.commission / 5);
                         self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToTheOwner{}.toCell(), self.commission, self.commission / 5);
                     } else {
-                        self.ownerSupportBalance += creatorProfit;
-                        self.royaltySupportBalance += royaltyProfit;
+                        self.ownerCollateralBalance += creatorProfit;
+                        self.royaltyCollateralBalance += royaltyProfit;
                     }
 
-                    self.contractSupportBalance += netValue;
+                    self.contractCollateralBalance += netValue;
                     self.totalJettonsSold += totalTokens;
                     self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
 
@@ -787,37 +788,37 @@ contract ProofOfCapital with Deployable, Ownable {
                     require(gasMinimum < 20, "Too much value for gas");
                     require(value >= gasMinimum * self.commission, "Amount must be greater than minimal");
                     let amount: Int = msg.amount;
-                    let supportAmountToPay: Int = 0;
+                    let collateralAmountToPay: Int = 0;
                     let tokensAvailableForReturnBuyback: Int = self.totalJettonsSold - self.jettonsEarned;
                     let effectiveAmount: Int = min(amount, tokensAvailableForReturnBuyback);
 
                     if (self.offsetJettons > self.jettonsEarned) {
                         if (effectiveAmount > self.offsetJettons - self.jettonsEarned) {
                             // @misti:suppress UnusedExpressionResult
-                            self.calculateSupportForTokenAmountEarned(self.offsetJettons - self.jettonsEarned);
+                            self.calculateCollateralForTokenAmountEarned(self.offsetJettons - self.jettonsEarned);
                             let buybackAmount: Int = effectiveAmount - (self.offsetJettons - self.jettonsEarned);
-                            supportAmountToPay = self.calculateSupportForTokenAmountEarned(buybackAmount);
+                            collateralAmountToPay = self.calculateCollateralForTokenAmountEarned(buybackAmount);
                         } else {
                             // @misti:suppress UnusedExpressionResult
-                            self.calculateSupportForTokenAmountEarned(effectiveAmount);
-                            supportAmountToPay = 0;
+                            self.calculateCollateralForTokenAmountEarned(effectiveAmount);
+                            collateralAmountToPay = 0;
                         }
                     } else {
-                        supportAmountToPay = self.calculateSupportForTokenAmountEarned(effectiveAmount);
+                        collateralAmountToPay = self.calculateCollateralForTokenAmountEarned(effectiveAmount);
                     }
 
                     self.jettonsEarned += effectiveAmount;
-                    require(self.contractSupportBalance >= supportAmountToPay, "Insufficient contract balance for redemption");
-                    self.contractSupportBalance -= supportAmountToPay;
+                    require(self.contractCollateralBalance >= collateralAmountToPay, "Insufficient contract balance for redemption");
+                    self.contractCollateralBalance -= collateralAmountToPay;
                     self.contractJettonBalance += amount;
 
-                    if (supportAmountToPay > 0) {
-                        if (self.jettonSupport) {
-                            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.farm, supportAmountToPay, PriceGrowthBuyback{}.toCell(), self.commission * 2, self.commission);
+                    if (collateralAmountToPay > 0) {
+                        if (self.jettonCollateral) {
+                            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.farm, collateralAmountToPay, PriceGrowthBuyback{}.toCell(), self.commission * 2, self.commission);
                         } else {
                             message(MessageParameters{
                                 to: self.farm,
-                                value: supportAmountToPay,
+                                value: collateralAmountToPay,
                                 bounce: true,
                                 mode: SendPayFwdFeesSeparately,
                                 body: PriceGrowthBuyback{}.toCell()
@@ -841,21 +842,21 @@ contract ProofOfCapital with Deployable, Ownable {
                     require(tokensAvailableForBuyback > 0, "Not have tokensAvailableForBuyback");
                     require(tokensAvailableForBuyback >= tokenForBuyback, "Insufficient tokens available for buyback");
 
-                    let supportAmountToPay: Int = self.calculateSupportToPayForTokenAmount(tokenForBuyback);
-                    require(self.contractSupportBalance >= supportAmountToPay, "Not enough support balance");
+                    let collateralAmountToPay: Int = self.calculateCollateralToPayForTokenAmount(tokenForBuyback);
+                    require(self.contractCollateralBalance >= collateralAmountToPay, "Not enough collateral balance");
 
-                    self.contractSupportBalance -= supportAmountToPay;
+                    self.contractCollateralBalance -= collateralAmountToPay;
                     self.totalJettonsSold -= tokenForBuyback;
 
-                    if (self.jettonSupport) {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, supportAmountToPay, SupportBuyback{}.toCell(), self.commission * 2, self.commission);
+                    if (self.jettonCollateral) {
+                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, collateralAmountToPay, CollateralBuyback{}.toCell(), self.commission * 2, self.commission);
                     } else {
                         message(MessageParameters{
                             to: msg.sender,
-                            value: supportAmountToPay,
+                            value: collateralAmountToPay,
                             bounce: true,
                             mode: SendPayFwdFeesSeparately,
-                            body: "Support Buyback".asComment()
+                            body: "Collateral Buyback".asComment()
                         });
                     }
                 }
@@ -869,7 +870,7 @@ contract ProofOfCapital with Deployable, Ownable {
         }
     }
 
-
+    // You can use DAO for launch and manage your contract. Reed more aboutt this on https://tokens.family
     receive(msg: SetFarm) {
         require(sender() == self.farm, "Access is only for the farm");
         self.farm = msg.farm;
@@ -882,27 +883,27 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
-        self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.farm, self.contractJettonBalance - self.totalJettonsSold, TransferAllMainJettonsToOwner{}.toCell(), self.commission * 2, self.commission); // todo fix farm
+        self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.farm, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission); // todo fix farm
         self.contractJettonBalance = 0;
         self.isActive = false;
     }
 
-    // Transfers the entire support jetton balance to the owner after the lock period ends.
-    // Verifies caller's permission, lock time, and support mode.
-    // Resets the support balance after the transfer.
-    receive(msg: WithdrawAllSupportCoins) {
+    // Transfers the entire collateral jetton balance to the owner after the lock period ends.
+    // Verifies caller's permission, lock time, and collateral mode.
+    // Resets the collateral balance after the transfer.
+    receive(msg: WithdrawAllCollateralCoins) {
         require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
-        require(self.jettonSupport, "Jetton support is not used.");
-        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.farm, self.contractSupportBalance, SendAllSupportBalanceToOwner{}.toCell(), self.commission * 2, self.commission); // todo fix farm
-        self.contractSupportBalance = 0;
+        require(self.jettonCollateral, "Jetton collateral is not used.");
+        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.farm, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission); // todo fix farm
+        self.contractCollateralBalance = 0;
         self.isActive = false;
     }
 
     // Transfers the entire available TON balance to the owner after the lock period ends.
     // Verifies caller's permission and lock time.
-    // Resets the support balance and updates the TON balance used for fees.
+    // Resets the collateral balance and updates the TON balance used for fees.
     receive(msg: WithdrawAllTons) {
         require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
@@ -914,19 +915,19 @@ contract ProofOfCapital with Deployable, Ownable {
             bounce: true,
             body: PaybackToFarm{}.toCell()
         });
-        self.contractSupportBalance = 0;
+        self.contractCollateralBalance = 0;
         self.isActive = false;
     }
 
     // Sends unused TON to the owner.
-    // Takes into account the support mode and deducts the fee.
+    // Takes into account the collateral mode and deducts the fee.
     receive(msg: WithdrawUnusedTons) {
         require(sender() == self.owner, "Access is only for the owner");
         let unusedTonToWithdraw: Int = 0;
-        if (self.jettonSupport) {
+        if (self.jettonCollateral) {
             unusedTonToWithdraw = myBalance() - (self.commission * COMMISSION_MULTIPLIER);
         } else {
-            unusedTonToWithdraw = myBalance() - self.contractSupportBalance - self.ownerTonBalance - self.royaltyTonBalance - (self.commission * COMMISSION_MULTIPLIER);
+            unusedTonToWithdraw = myBalance() - self.contractCollateralBalance - self.ownerTonBalance - self.royaltyTonBalance - (self.commission * COMMISSION_MULTIPLIER);
         }
         message(MessageParameters{
             to: self.owner,
@@ -941,9 +942,9 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: GetProfitOnRequest) {
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         if (sender() == self.owner()) {
-            if (self.jettonSupport) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.ownerSupportBalance, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission );
-                self.ownerSupportBalance = 0;
+            if (self.jettonCollateral) {
+                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.ownerCollateralBalance, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission );
+                self.ownerCollateralBalance = 0;
             } else {
                 message(MessageParameters{
                     to: sender(),
@@ -956,9 +957,9 @@ contract ProofOfCapital with Deployable, Ownable {
             }
         } else {
             require(sender() == self.royaltyWalletAddress, "Access is only for current owner or royalty wallet");
-            if (self.jettonSupport) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.royaltySupportBalance, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
-                self.royaltySupportBalance = 0;
+            if (self.jettonCollateral) {
+                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.royaltyCollateralBalance, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
+                self.royaltyCollateralBalance = 0;
             } else {
                  message(MessageParameters{
                     to: sender(),
@@ -980,10 +981,10 @@ contract ProofOfCapital with Deployable, Ownable {
             value: 0,
             bounce: false,
             mode: SendRemainingValue,
-            body: GetLockEndTime{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, lockEndTime: self.lockEndTime, mainJettonDeferredWTHDate: self.mainJettonDeferredWithdrawalDate, supportJettonDeferredWTHDate: self.supportJettonDeferredWithdrawalDate }.toCell()});
+            body: GetLockEndTime{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, lockEndTime: self.lockEndTime, launchJettonDeferredWTHDate: self.launchJettonDeferredWithdrawalDate, collateralJettonDeferredWTHDate: self.collateralJettonDeferredWithdrawalDate }.toCell()});
     }
 
-    // Sends the current price of the main jetton to the sender.
+    // Sends the current price of the launch jetton to the sender.
     receive(msg: FetchCurrentPrice) {
         require(context().value >= self.commission, "Insufficient funds to cover commission for price");
         message(MessageParameters{
@@ -1004,15 +1005,15 @@ contract ProofOfCapital with Deployable, Ownable {
             mode: SendRemainingValue,
             body: GetNumberOfMarketMakers{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentNumber: self.marketMakerAddressesLength }.toCell()});
     }
-    // jetton support , launch token, active, current price
+    // jetton collateral, launch token, active, current price
     receive(msg: FetchContractInfoAfterUpdatePoc) {
-        require(context().value >= self.commission, "Insufficient funds to cover commission for transfer jetton support");
+        require(context().value >= self.commission, "Insufficient funds to cover commission for transfer jetton collateral");
         message(MessageParameters{
             to: sender(),
             value: 0,
             bounce: false,
             mode: SendRemainingValue,
-            body: GetContractInfoAfterUpdatePoc{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, jettonSupportAddress: self.jettonCollateralMasterAddress, jettonLaunchAddress: self.launchJettonMasterAddress, isActive: self.isActive, currentPrice: self.currentPrice }.toCell()});
+            body: GetContractInfoAfterUpdatePoc{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, jettonCollateralAddress: self.jettonCollateralMasterAddress, jettonLaunchAddress: self.launchJettonMasterAddress, isActive: self.isActive, currentPrice: self.currentPrice }.toCell()});
     }
 
     // Calculates the number of full 30-day periods elapsed since controlDay.
@@ -1031,7 +1032,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Helper function to check if the caller is allowed to trade at the current moment.
     fun checkTradingAccess(): Bool {
-        return (self.mainJettonDeferredWithdrawalDate > 0) || (self.supportJettonDeferredWithdrawalDate > 0) || self.lockEndTime - SIXTY_DAYS < now() || self.checkControlDay();
+        return (self.launchJettonDeferredWithdrawalDate > 0) || (self.collateralJettonDeferredWithdrawalDate > 0) || self.lockEndTime - SIXTY_DAYS < now() || self.checkControlDay();
     }
 
     // Helper function to check if the current time is within the "unlock window" period after the lock expires.
@@ -1124,21 +1125,21 @@ contract ProofOfCapital with Deployable, Ownable {
         self.totalJettonsSold = amountJettons;
     }
 
-    // Calculates the offset change for support based on the given support amount,
+    // Calculates the offset change for collateral based on the given collateral amount,
     // updating the internal offset and step state.
     //
     // Logic:
-    // - Iterates over the remaining support amount and available offset tokens.
-    // - For each step, calculates the available number of tokens, profit percentage, and actual support cost.
-    // - If the remaining support and tokens cover the entire step, decreases the remainder and step count,
+    // - Iterates over the remaining collateral amount and available offset tokens.
+    // - For each step, calculates the available number of tokens, profit percentage, and actual collateral cost.
+    // - If the remaining collateral and tokens cover the entire step, decreases the remainder and step count,
     //   adjusts step parameters and price.
-    // - If the support is less than the full step cost, distributes tokens partially and updates remainders.
+    // - If the collateral is less than the full step cost, distributes tokens partially and updates remainders.
     // - Updates the current step, price, and offset remainder parameters.
     //
     // Returns:
-    // - The amount of support successfully distributed across steps.
-    fun calculateChangeOffsetSupport(amountSupport: Int): Int {
-        let remainingAddSupport: Int = amountSupport;
+    // - The amount of collateral successfully distributed across steps.
+    fun calculateChangeOffsetCollateral(amountCollateral: Int): Int {
+        let remainingAddCollateral: Int = amountCollateral;
         let remainingOffsetJettons: Int = self.offsetJettons;
         let remainingAddJettons: Int = self.offsetJettons - self.jettonsEarned;
         let localCurrentStep: Int = self.offsetStep;
@@ -1146,14 +1147,14 @@ contract ProofOfCapital with Deployable, Ownable {
         let jettonsPerLevel: Int = self.sizeOffsetStep;
         let currentPrice: Int = self.offsetPrice;
 
-        while (remainingAddSupport > 0 && remainingAddJettons > 0) {
+        while (remainingAddCollateral > 0 && remainingAddJettons > 0) {
             let tokensAvailableInStep: Int = jettonsPerLevel - remainderOfStep;
             let profitPercentage: Int = self.calculateProfit(localCurrentStep);
             let tonInStep: Int = tokensAvailableInStep * currentPrice / self.jettonDecimals;
             let tonRealInStep: Int = tonInStep * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
 
-            if (remainingAddSupport >= tonRealInStep && remainingAddJettons >= tokensAvailableInStep) {
-                remainingAddSupport -= tonRealInStep;
+            if (remainingAddCollateral >= tonRealInStep && remainingAddJettons >= tokensAvailableInStep) {
+                remainingAddCollateral -= tonRealInStep;
                 remainingOffsetJettons -= tokensAvailableInStep;
                 remainingAddJettons -= tokensAvailableInStep;
 
@@ -1178,19 +1179,19 @@ contract ProofOfCapital with Deployable, Ownable {
             } else {
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
 
-                let supportToPayForStep: Int = 0;
+                let collateralToPayForStep: Int = 0;
                 let tokensToBuyInThisStep: Int = 0;
 
 
-                if (remainingAddSupport >= tonRealInStep) {
-                    supportToPayForStep = remainingAddJettons * adjustedPrice / self.jettonDecimals;
+                if (remainingAddCollateral >= tonRealInStep) {
+                    collateralToPayForStep = remainingAddJettons * adjustedPrice / self.jettonDecimals;
                     tokensToBuyInThisStep = remainingAddJettons;
                 } else {
-                    supportToPayForStep = remainingAddSupport;
-                    tokensToBuyInThisStep = remainingAddSupport * self.jettonDecimals / adjustedPrice;
+                    collateralToPayForStep = remainingAddCollateral;
+                    tokensToBuyInThisStep = remainingAddCollateral * self.jettonDecimals / adjustedPrice;
                 }
                 remainderOfStep += tokensToBuyInThisStep;
-                remainingAddSupport -= supportToPayForStep;
+                remainingAddCollateral -= collateralToPayForStep;
                 remainingOffsetJettons -= tokensToBuyInThisStep;
                 remainingAddJettons = 0;
             }
@@ -1202,7 +1203,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.sizeOffsetStep = jettonsPerLevel;
         self.offsetJettons = remainingOffsetJettons;
 
-        return (amountSupport - remainingAddSupport);
+        return (amountCollateral - remainingAddCollateral);
     }
 
     // Updates the offset for a given amount of added tokens,
@@ -1272,29 +1273,29 @@ contract ProofOfCapital with Deployable, Ownable {
         return localCurrentStep;
     }
 
-    // Calculates the number of tokens to be issued for a given support amount.
+    // Calculates the number of tokens to be issued for a given collateral amount.
     //
     // Logic:
     // - Initializes local variables for the current step, remainder, tokens per level, and price.
-    // - In a loop, while there is remaining support and tokens available to issue:
+    // - In a loop, while there is remaining collateral and tokens available to issue:
     //   - Determines the available number of tokens at the current step and the required TON amount to purchase them.
-    //   - If the support is sufficient for a full step:
+    //   - If the collateral is sufficient for a full step:
     //     - Increases the number of tokens to issue by the full step amount.
     //     - Calculates and accumulates profit for that step.
     //     - Moves to the next step, recalculating tokens per level and price.
-    //   - If the support is insufficient for a full step:
-    //     - Calculates how many tokens can be bought with the remaining support.
+    //   - If the collateral is insufficient for a full step:
+    //     - Calculates how many tokens can be bought with the remaining collateral.
     //     - Adds them to the total number to be issued.
     //     - Calculates and adds profit for this partial step.
-    //     - Sets the remaining support to zero and adjusts the step remainder.
+    //     - Sets the remaining collateral to zero and adjusts the step remainder.
     // - If more tokens are requested than available, limits issuance to the maximum remaining.
     // - Updates offset state, current step, price, and profit.
     //
     // Returns:
     // - The number of tokens to be issued.
-    fun calculateJettonsToGiveForSupportAmount(supportAmount: Int): Int {
+    fun calculateJettonsToGiveForCollateralAmount(collateralAmount: Int): Int {
         let jettonsToGive: Int = 0;
-        let remainingSupportAmount: Int = supportAmount;
+        let remainingCollateralAmount: Int = collateralAmount;
         let localCurrentStep: Int = self.currentStep;
         let remainderOfStep: Int = self.remainderOfStep;
         let jettonsPerLevel: Int = self.quantityJettonsPerLevel;
@@ -1302,11 +1303,11 @@ contract ProofOfCapital with Deployable, Ownable {
         let totalProfit: Int = 0;
         let remainderOfjettons: Int = self.contractJettonBalance - self.totalJettonsSold;
 
-        while (remainingSupportAmount > 0 && remainderOfjettons >= jettonsToGive) {
+        while (remainingCollateralAmount > 0 && remainderOfjettons >= jettonsToGive) {
             let tokensAvailableInStep: Int = remainderOfStep;
             let tonRequiredForStep: Int = tokensAvailableInStep * currentPrice / self.jettonDecimals;
 
-            if (remainingSupportAmount >= tonRequiredForStep) {
+            if (remainingCollateralAmount >= tonRequiredForStep) {
                 jettonsToGive += tokensAvailableInStep;
                 let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
@@ -1314,7 +1315,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 totalProfit += profitInStep;
 
-                remainingSupportAmount -= tonRequiredForStep;
+                remainingCollateralAmount -= tonRequiredForStep;
 
                 localCurrentStep += 1;
 
@@ -1323,9 +1324,9 @@ contract ProofOfCapital with Deployable, Ownable {
                 remainderOfStep = jettonsPerLevel;
                 currentPrice = (currentPrice * (MAX_PERCENT + self.priceIncrementMultiplier)) / MAX_PERCENT;
             } else {
-                let tokensToBuyInThisStep: Int = remainingSupportAmount * self.jettonDecimals / currentPrice;
+                let tokensToBuyInThisStep: Int = remainingCollateralAmount * self.jettonDecimals / currentPrice;
                 jettonsToGive += tokensToBuyInThisStep;
-                let tonSpentInThisStep: Int = remainingSupportAmount;
+                let tonSpentInThisStep: Int = remainingCollateralAmount;
 
                 let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
@@ -1333,7 +1334,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 totalProfit += profitInStep;
 
-                remainingSupportAmount = 0;
+                remainingCollateralAmount = 0;
                 remainderOfStep -= tokensToBuyInThisStep;
             }
         }
@@ -1356,7 +1357,7 @@ contract ProofOfCapital with Deployable, Ownable {
         return jettonsToGive;
     }
 
-    // Calculates the support amount (supportAmountToPay) required to purchase a given number of tokens (tokenAmount).
+    // Calculates the collateral amount (collateralAmountToPay) required to purchase a given number of tokens (tokenAmount).
     //
     // Logic:
     // - Uses local copies of the current step, step token remainder, price, and tokens per level.
@@ -1365,20 +1366,20 @@ contract ProofOfCapital with Deployable, Ownable {
     //   - If the remaining token amount is greater than or equal to the available tokens in the step:
     //     - Calculates the profit percentage for the current step.
     //     - Adjusts the price with the profit.
-    //     - Calculates the support amount for the full step and adds it to the total payment.
+    //     - Calculates the collateral amount for the full step and adds it to the total payment.
     //     - Reduces the remaining token amount.
     //     - Updates level parameters and price when transitioning to a new step.
     //     - Adjusts the step and step token remainder based on the current state.
     //   - If the token amount is less than the available tokens in the step:
-    //     - Calculates the support amount for the partial token quantity similarly.
+    //     - Calculates the collateral amount for the partial token quantity similarly.
     //     - Updates the step token remainder.
     //     - All tokens are paid — the loop ends.
     // - Updates the contract state: current step, tokens per level, current price, and remainder.
     //
     // Returns:
-    // - The total support amount to be paid.
-    fun calculateSupportToPayForTokenAmount(tokenAmount: Int): Int {
-        let supportAmountToPay: Int = 0;
+    // - The total collateral amount to be paid.
+    fun calculateCollateralToPayForTokenAmount(tokenAmount: Int): Int {
+        let collateralAmountToPay: Int = 0;
         let remainingJettonAmount: Int = tokenAmount;
         let localCurrentStep: Int = self.currentStep;
         let remainderOfStep: Int = self.remainderOfStep;
@@ -1393,8 +1394,8 @@ contract ProofOfCapital with Deployable, Ownable {
 
 
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
-                let supportToPayForStep: Int = tokensAvailableInStep * adjustedPrice / self.jettonDecimals;
-                supportAmountToPay += supportToPayForStep;
+                let collateralToPayForStep: Int = tokensAvailableInStep * adjustedPrice / self.jettonDecimals;
+                collateralAmountToPay += collateralToPayForStep;
 
                 remainingJettonAmount -= tokensAvailableInStep;
 
@@ -1420,8 +1421,8 @@ contract ProofOfCapital with Deployable, Ownable {
                 let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
-                let supportToPayForStep: Int = remainingJettonAmount * adjustedPrice / self.jettonDecimals;
-                supportAmountToPay += supportToPayForStep;
+                let collateralToPayForStep: Int = remainingJettonAmount * adjustedPrice / self.jettonDecimals;
+                collateralAmountToPay += collateralToPayForStep;
 
                 remainderOfStep += remainingJettonAmount;
                 remainingJettonAmount = 0;
@@ -1438,10 +1439,10 @@ contract ProofOfCapital with Deployable, Ownable {
             self.remainderOfStep = remainderOfStep;
         }
 
-        return supportAmountToPay;
+        return collateralAmountToPay;
     }
 
-    // Calculates the support amount (supportAmountToPay) required to be paid for a given number of earned tokens (tokenAmount).
+    // Calculates the collateral amount (collateralAmountToPay) required to be paid for a given number of earned tokens (tokenAmount).
     //
     // Logic:
     // - Uses local copies of current step, step token remainder, price, and tokens per level for earned.
@@ -1450,22 +1451,22 @@ contract ProofOfCapital with Deployable, Ownable {
     //   - If the remaining token amount is greater than or equal to the available remainder:
     //     - Calculates the profit percentage for the current step.
     //     - Adjusts the price including the profit.
-    //     - Calculates the support amount for the full remainder and adds it to the total payment.
+    //     - Calculates the collateral amount for the full remainder and adds it to the total payment.
     //     - Proceeds to the next step.
     //     - Updates the number of tokens per level (jettonsPerLevel) using the calculateJettonsPerLevel function.
     //     - Sets the new remainder to the updated tokens per level.
     //     - Decreases the remaining token amount.
     //     - Updates the current price using the increment multiplier.
     //   - If fewer tokens remain than available in the remainder:
-    //     - Similarly calculates the support amount for the partial token quantity.
+    //     - Similarly calculates the collateral amount for the partial token quantity.
     //     - Updates the remainder by subtracting the paid tokens.
     //     - Ends the loop (all tokens are paid).
     // - After the loop, updates the contract state (current earned step, tokens per level, current price, and remainder).
     //
     // Returns:
-    // - The total support amount to be paid.
-    fun calculateSupportForTokenAmountEarned(tokenAmount: Int): Int {
-        let supportAmountToPay: Int = 0;
+    // - The total collateral amount to be paid.
+    fun calculateCollateralForTokenAmountEarned(tokenAmount: Int): Int {
+        let collateralAmountToPay: Int = 0;
         let remainingJettonAmount: Int = tokenAmount;
         let localCurrentStep: Int = self.currentStepEarned;
         let remainderOfStep: Int = self.remainderOfStepEarned;
@@ -1479,8 +1480,8 @@ contract ProofOfCapital with Deployable, Ownable {
                 let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
-                let supportToPayForStep: Int = tokensAvailableInStep * adjustedPrice / self.jettonDecimals;
-                supportAmountToPay += supportToPayForStep;
+                let collateralToPayForStep: Int = tokensAvailableInStep * adjustedPrice / self.jettonDecimals;
+                collateralAmountToPay += collateralToPayForStep;
 
                 localCurrentStep += 1;
 
@@ -1494,8 +1495,8 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 let adjustedPrice: Int = currentPrice * (MAX_PERCENT - profitPercentage) / MAX_PERCENT;
 
-                let supportToPayForStep: Int = remainingJettonAmount * adjustedPrice / self.jettonDecimals;
-                supportAmountToPay += supportToPayForStep;
+                let collateralToPayForStep: Int = remainingJettonAmount * adjustedPrice / self.jettonDecimals;
+                collateralAmountToPay += collateralToPayForStep;
 
                 remainderOfStep -= remainingJettonAmount;
                 remainingJettonAmount = 0;
@@ -1512,7 +1513,7 @@ contract ProofOfCapital with Deployable, Ownable {
             self.remainderOfStepEarned = remainderOfStep;
         }
 
-        return supportAmountToPay;
+        return collateralAmountToPay;
     }
 
     get fun remaining_seconds(): Int {
@@ -1539,8 +1540,8 @@ contract ProofOfCapital with Deployable, Ownable {
         return self.totalJettonsSold - self.jettonsEarned;
     }
 
-    get fun support_token_balance(): Int {
-        return self.contractSupportBalance;
+    get fun collateral_token_balance(): Int {
+        return self.contractCollateralBalance;
     }
 
     get fun profit(): Int {
@@ -1582,18 +1583,18 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     get fun check_owner_profit(): Int {
-        if (!self.jettonSupport) {
+        if (!self.jettonCollateral) {
             return self.ownerTonBalance;
         } else {
-            return self.ownerSupportBalance;
+            return self.ownerCollateralBalance;
         }
     }
 
     get fun check_royalty_profit(): Int {
-        if (!self.jettonSupport) {
+        if (!self.jettonCollateral) {
             return self.royaltyTonBalance;
         } else {
-            return self.royaltySupportBalance;
+            return self.royaltyCollateralBalance;
         }
     }
 
@@ -1629,18 +1630,18 @@ contract ProofOfCapital with Deployable, Ownable {
         return self.remainderOfStep;
     }
 
-    get fun support_to_jetton_calculation(a: Int): Int {
-        let b: Int = self.calculateJettonsToGiveForSupportAmount(a);
+    get fun collateral_to_jetton_calculation(a: Int): Int {
+        let b: Int = self.calculateJettonsToGiveForCollateralAmount(a);
         return b;
     }
 
-    get fun jetton_to_support_calculation(a: Int): Int {
-        let b: Int = self.calculateSupportToPayForTokenAmount(a);
+    get fun jetton_to_collateral_calculation(a: Int): Int {
+        let b: Int = self.calculateCollateralToPayForTokenAmount(a);
         return b;
     }
 
     get fun jetton_to_return_calculation(a: Int): Int {
-        let b: Int = self.calculateSupportForTokenAmountEarned(a);
+        let b: Int = self.calculateCollateralForTokenAmountEarned(a);
         return b;
     }
 
@@ -1653,8 +1654,8 @@ contract ProofOfCapital with Deployable, Ownable {
         return self.additionalJettonWalletAddress;
     }
 
-    get fun unused_support_ton(): Int {
-        let unusedAmount: Int = myBalance() - self.contractSupportBalance - (self.commission * COMMISSION_MULTIPLIER);
+    get fun unused_collateral_ton(): Int {
+        let unusedAmount: Int = myBalance() - self.contractCollateralBalance - (self.commission * COMMISSION_MULTIPLIER);
         return unusedAmount;
     }
 
@@ -1694,8 +1695,8 @@ contract ProofOfCapital with Deployable, Ownable {
         return self.callJettonsID;
     }
 
-    get fun calculate_change_offset_support(a: Int): Int {
-        let b: Int = self.calculateChangeOffsetSupport(a);
+    get fun calculate_change_offset_collateral(a: Int): Int {
+        let b: Int = self.calculateChangeOffsetCollateral(a);
         return b;
     }
 
@@ -1704,15 +1705,15 @@ contract ProofOfCapital with Deployable, Ownable {
         return b;
     }
 
-    get fun is_jetton_support(): Bool {
-        return self.jettonSupport;
+    get fun is_jetton_collateral(): Bool {
+        return self.jettonCollateral;
     }
 
-    get fun jetton_support_master_address(): Address {
+    get fun jetton_collateral_master_address(): Address {
         return self.jettonCollateralMasterAddress;
     }
 
-    get fun contract_jetton_support_wallet_address(): Address {
+    get fun contract_jetton_collateral_wallet_address(): Address {
         return self.contractJettonCollateralWalletAddress;
     }
 
@@ -1725,23 +1726,23 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     get fun main_jetton_deferred_WTH_Date(): Int {
-        return self.mainJettonDeferredWithdrawalDate;
+        return self.launchJettonDeferredWithdrawalDate;
     }
 
     get fun main_jetton_deferred_WTH_Recipient(): Address {
-        return self.recipientDeferredWithdrawalMainJetton;
+        return self.recipientDeferredWithdrawalLaunchJetton;
     }
 
     get fun main_jetton_deferred_WTH_Amount(): Int {
-        return self.mainJettonDeferredWithdrawalAmount;
+        return self.launchJettonDeferredWithdrawalAmount;
     }
 
-    get fun support_jetton_deferred_WTH_Date(): Int {
-        return self.supportJettonDeferredWithdrawalDate;
+    get fun collateral_jetton_deferred_WTH_Date(): Int {
+        return self.collateralJettonDeferredWithdrawalDate;
     }
 
-    get fun support_jetton_deferred_WTH_Recipient(): Address {
-        return self.recipientDeferredWithdrawalSupportJetton;
+    get fun collateral_jetton_deferred_WTH_Recipient(): Address {
+        return self.recipientDeferredWithdrawalCollateralJetton;
     }
 
     get fun old_contract_address(): Address {
@@ -1796,18 +1797,18 @@ contract ProofOfCapital with Deployable, Ownable {
         return contractState.toString();
     }
 
-    get fun support_tokens_contract_values(): String {
+    get fun collateral_tokens_contract_values(): String {
         let contractState: StringBuilder = beginString();
         contractState.append("JSMA:");
         contractState.append(self.jettonCollateralMasterAddress.toString());
         contractState.append("|CJSWA:");
         contractState.append(self.contractJettonCollateralWalletAddress.toString());
         contractState.append("|CSB:");
-        contractState.append(self.contractSupportBalance.toCoinsString());
+        contractState.append(self.contractCollateralBalance.toCoinsString());
         return contractState.toString();
     }
 
-    get fun standard_contract_state_support_values(): String {
+    get fun standard_contract_state_collateral_values(): String {
         let contractState: StringBuilder = beginString();
         contractState.append("PIM:");
         contractState.append(self.priceIncrementMultiplier.toString());
@@ -1824,7 +1825,7 @@ contract ProofOfCapital with Deployable, Ownable {
         contractState.append("|QI:");
         contractState.append(self.queryId.toString());
         contractState.append("|CSB:");
-        contractState.append(self.contractSupportBalance.toCoinsString());
+        contractState.append(self.contractCollateralBalance.toCoinsString());
         contractState.append("|CRTB: ");
         contractState.append(myBalance().toCoinsString());
         contractState.append("|AP:");
@@ -1869,11 +1870,11 @@ contract ProofOfCapital with Deployable, Ownable {
     get fun contract_wth_state_values(): String {
         let contractState: StringBuilder = beginString();
         contractState.append("MJDWD:");
-        contractState.append(self.mainJettonDeferredWithdrawalDate.toString());
+        contractState.append(self.launchJettonDeferredWithdrawalDate.toString());
         contractState.append("|MJDWA:");
-        contractState.append(self.mainJettonDeferredWithdrawalAmount.toCoinsString());
+        contractState.append(self.launchJettonDeferredWithdrawalAmount.toCoinsString());
         contractState.append("|SJDD:");
-        contractState.append(self.supportJettonDeferredWithdrawalDate.toString());
+        contractState.append(self.collateralJettonDeferredWithdrawalDate.toString());
         return contractState.toString();
     }
 

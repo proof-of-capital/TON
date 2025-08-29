@@ -103,7 +103,7 @@ Durante la inicialización y el despliegue del contrato en Tact, se establecen l
 | **profitPercentage**                  | `Int as uint16`    | Porcentaje de beneficio.                                                  |
 | **offsetJettons**                     | `Int as coins`     | Cantidad de tokens vendidos previamente (compensación histórica).         |
 | **controlPeriod**                     | `Int as uint32`    | Duración de la "ventana de desbloqueo" en segundos UNIX.                  |
-| **jettonSupport**                     | `Bool`             | Activa la compatibilidad para compras de tokens con otros tokens (ej., USDT).  |
+| **jettonCollateral**                     | `Bool`             | Activa la compatibilidad para compras de tokens con otros tokens (ej., USDT).  |
 | **jettonCollateralMasterAddress**        | `Address`          | Dirección del contrato maestro del token como garantía (si está habilitado). |
 | **royaltyProfitPercentage**           | `Int as uint16`    | Porcentaje del beneficio enviado a la billetera de regalías.              |
 | **coefficientProfit**           | `Int as uint16`    | Porcentaje de beneficio en los pasos iniciales (hasta que cambie la tendencia)              |

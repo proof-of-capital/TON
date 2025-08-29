@@ -103,7 +103,7 @@ During initialization and deployment of the contract in Tact, the following vari
 | **profitPercentage**                      | `Int as uint16`  | Profit percentage.                                                        |
 | **offsetJettons**                         | `Int as coins`   | Number of previously sold jettons (historical offset).                    |
 | **controlPeriod**                         | `Int as uint32`  | Duration of the "unlock window" in UNIX seconds.                          |
-| **jettonSupport**                         | `Bool`           | Enables purchasing jettons with other jettons (e.g., USDT).               |
+| **jettonCollateral**                         | `Bool`           | Enables purchasing jettons with other jettons (e.g., USDT).               |
 | **jettonCollateralMasterAddress**            | `Address`        | Address of the collateral jetton master contract (if collateral is enabled). |
 | **royaltyProfitPercentage**               | `Int as uint16`  | Percentage of profit sent to the royalty wallet.                          |
 | **coefficientProfit**               | `Int as uint16`  | Profit percentage in the initial steps (before the trend changes)                          |

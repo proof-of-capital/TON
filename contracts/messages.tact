@@ -45,7 +45,7 @@ message WithdrawAllTons {}
 
 message WithdrawAllCoins {}
 
-message WithdrawAllSupportCoins {}
+message WithdrawAllCollateralCoins {}
 
 message AddAdditionalJettonData {
     newAdditionalJettonWalletAddress: Address;
@@ -95,15 +95,15 @@ message JettonDeferredWithdrawal {
     recipientAddress: Address;
 }
 
-message SupportDeferredWithdrawal {
+message CollateralDeferredWithdrawal {
     recipientAddress: Address;
 }
 
 message StopJettonDeferredWithdrawal { }
-message StopSupportDeferredWithdrawal { }
+message StopCollateralDeferredWithdrawal { }
 
 message ConfirmJettonDeferredWithdrawal { }
-message ConfirmSupportDeferredWithdrawal { }
+message ConfirmCollateralDeferredWithdrawal { }
 
 message OldContractAddress {
     oldContractAddress: Address;
@@ -113,8 +113,8 @@ message GetLockEndTime {
     queryId: Int as uint64;
     originalGasTo: Address;
     lockEndTime: Int as uint32;
-    mainJettonDeferredWTHDate: Int as uint32;
-    supportJettonDeferredWTHDate: Int as uint32;
+    launchJettonDeferredWTHDate: Int as uint32;
+    collateralJettonDeferredWTHDate: Int as uint32;
 }
 
 message GetCurrentPrice {
@@ -168,16 +168,16 @@ message FetchContractInfoAfterUpdatePoc {
 message GetContractInfoAfterUpdatePoc {
     queryId: Int as uint64;
     originalGasTo: Address;
-    jettonSupportAddress: Address;
+    jettonCollateralAddress: Address;
     jettonLaunchAddress: Address;
     isActive: Bool;
     currentPrice: Int as coins;
 }
 
 // New messages for jetton transfers with specific payloads
-message MainJettonDeferredWithdrawal {}
+message LaunchJettonDeferredWithdrawal {}
 
-message SupportJettonDeferredWithdrawal {}
+message CollateralJettonDeferredWithdrawal {}
 
 message SendOtherJettonsToFarm {}
 
@@ -189,8 +189,8 @@ message SendProfitToTheOwner {}
 
 message SendProfitToRoyalty {}
 
-message SupportBuyback {}
+message CollateralBuyback {}
 
-message TransferAllMainJettonsToOwner {}
+message TransferAllLaunchJettonsToOwner {}
 
-message SendAllSupportBalanceToOwner {}
+message SendAllCollateralBalanceToOwner {}
