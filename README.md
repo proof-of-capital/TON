@@ -107,7 +107,7 @@ During initialization and deployment of the contract in Tact, the following vari
 | **jettonCollateralMasterAddress**            | `Address`        | Address of the collateral jetton master contract (if collateral is enabled). |
 | **royaltyProfitPercentage**               | `Int as uint16`  | Percentage of profit sent to the royalty wallet.                          |
 | **coefficientProfit**               | `Int as uint16`  | Profit percentage in the initial steps (before the trend changes)                          |
-| **jettonDecimals**               | `Int as uint32`  | Number of smallest units in one jetton (9 for standard tokens)                          |
+| **jettonDecimals**               | `Int as uint32`  | Number of smallest units in one jetton (10 ** 9 for standard tokens)                          |
 
 ---
 

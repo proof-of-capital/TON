@@ -107,7 +107,7 @@ yarn blueprint run
 | **jettonCollateralMasterAddress**       | `Address`          | Адрес мастер-контракта жетона обеспечения (если включено обеспечение).   |
 | **royaltyProfitPercentage**          | `Int as uint16`    | Процент от прибыли, отправляемый на royalty-кошелёк.                     |
 | **coefficientProfit**          | `Int as uint16`    | Процент прибыли на стартовых шагах (до смены тренда)                     |
-| **jettonDecimals**          | `Int as uint32`    | Количество минимальных единиц в одном жетоне (для класических токенов 9)                     |
+| **jettonDecimals**          | `Int as uint32`    | Количество минимальных единиц в одном жетоне (для класических токенов 10 ** 9)                     |
 
 ---
 

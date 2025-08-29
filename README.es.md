@@ -107,7 +107,7 @@ Durante la inicialización y el despliegue del contrato en Tact, se establecen l
 | **jettonCollateralMasterAddress**        | `Address`          | Dirección del contrato maestro del token como garantía (si está habilitado). |
 | **royaltyProfitPercentage**           | `Int as uint16`    | Porcentaje del beneficio enviado a la billetera de regalías.              |
 | **coefficientProfit**           | `Int as uint16`    | Porcentaje de beneficio en los pasos iniciales (hasta que cambie la tendencia)              |
-| **jettonDecimals**           | `Int as uint32`    | Cantidad de unidades mínimas en un solo jetón (para los tokens clásicos, 9)              |
+| **jettonDecimals**           | `Int as uint32`    | Cantidad de unidades mínimas en un solo jetón (para los tokens clásicos, 10 ** 9)              |
 
 ---
 
