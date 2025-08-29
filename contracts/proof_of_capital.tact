@@ -277,7 +277,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Extends the lock for a specified period at the request of the owner. Supported durations are 10 minutes, 3 months, or 6 months.
     receive(msg: ExtendLock) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value > self.commission, "Amount must be greater than commission");
+        require(context().value >= self.commission, "Amount must be greater than commission");
         require(((self.lockEndTime + msg.additionalTime) - now()) < TWO_YEARS, "Lock end time cannot exceed two years");
         require(msg.additionalTime == HALF_YEAR || msg.additionalTime == TEN_MINUTES || msg.additionalTime == THREE_MONTHS, "Invalid time!");
         self.lockEndTime += msg.additionalTime;
@@ -353,7 +353,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Confirms and executes the deferred withdrawal of main jettons after the waiting period expires.
     receive(msg: ConfirmJettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
+        require(context().value >= self.commission * 20, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.mainJettonDeferredWithdrawalDate != 0, "Main jetton deferred withdrawal date is not set or reset");
         require(now() >= self.mainJettonDeferredWithdrawalDate, "Main jetton deferred withdrawal date is not arrived yet");
@@ -361,7 +361,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
         let amount: Int = min(self.mainJettonDeferredWithdrawalAmount, self.contractJettonBalance - self.totalJettonsSold);
         if (amount > 0) {
-            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalMainJetton, amount, MainJettonDeferredWithdrawal{}.toCell(), self.commission * 2, self.commission );
+            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalMainJetton, amount, MainJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission);
         }
         
         self.contractJettonBalance -= amount;
@@ -399,14 +399,14 @@ contract ProofOfCapital with Deployable, Ownable {
     // Confirms and executes the deferred withdrawal of support jettons after the waiting period expires.
     receive(msg: ConfirmSupportDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
+        require(context().value >= self.commission * 20, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.supportJettonDeferredWithdrawalDate != 0, "Support jetton deferred withdrawal date is not set or reset");
         require(now() >= self.supportJettonDeferredWithdrawalDate, "Support jetton deferred withdrawal date is not arrived yet");
         require(now() <= self.supportJettonDeferredWithdrawalDate + SEVEN_DAYS, "Support jetton deferred withdrawal period is finished");
 
         if (self.jettonSupport) {
-            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, SupportJettonDeferredWithdrawal{}.toCell(), self.commission * 2, self.commission);
+            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalSupportJetton, self.contractSupportBalance, SupportJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission);
         } else {
             message(MessageParameters{
                 to: self.recipientDeferredWithdrawalSupportJetton,
@@ -505,8 +505,11 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: AddAdditionalJettonData) {
         require(sender() == self.owner, "Access is only for the owner");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
-        require(msg.newAdditionalJettonWalletAddress != self.contractJettonCollateralWalletAddress, "Additional jetton wallet address in mesage cannot be support jetton wallet");
         require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in mesage cannot be zero");
+        if (now() < self.lockEndTime) {
+            require(msg.newAdditionalJettonWalletAddress != self.contractJettonCollateralWalletAddress, "Additional jetton wallet address in mesage cannot be support jetton wallet");
+            require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in mesage cannot be support jetton wallet");
+        }
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
         self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.owner, msg.amount, SendOtherJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
         self.queryId += 1;
@@ -590,11 +593,14 @@ contract ProofOfCapital with Deployable, Ownable {
             require(self.isInitialized, "Contract jetton wallets are not initialized yet");
             require(!self.jettonSupport, "Jetton support is used");
             let value = context().value;
+            let gasMinimum = 4 + value / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
+            require(gasMinimum < 20, "Too much value for gas");
             if (self.profitInTime) {
-                value -= self.commission * 4;
+                value -= self.commission * (2 + gasMinimum);
             } else {
-                value -= self.commission * 2;
+                value -= self.commission * gasMinimum;
             }
+            require(value >= self.commission, "Insufficient funds to cover commission");
             if (sender() == self.owner || sender() == self.oldContractAddress) {
                 if (self.offsetJettons - self.jettonsEarned > 0)
                 {
@@ -705,10 +711,12 @@ contract ProofOfCapital with Deployable, Ownable {
         if (sender() == self.contractJettonCollateralWalletAddress) {
             try {
                 require(self.jettonSupport, "Jettons support is not used or notification not from your jetton support wallet!");
+                let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
+                require(gasMinimum < 20, "Too much value for gas");
                 if (self.profitInTime) {
-                    require(value >= self.commission * 4, "Insufficient funds to cover commission for transfer support jettons.");
+                    require(value >= self.commission * (2 + gasMinimum), "Insufficient funds to cover commission for transfer support jettons.");
                 } else {
-                    require(value >= self.commission * 2, "Insufficient funds to cover commission for transfer support jettons.");
+                    require(value >= self.commission * gasMinimum, "Insufficient funds to cover commission for transfer support jettons.");
                 }
                 if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
                     if (self.offsetJettons - self.jettonsEarned > 0) {
@@ -764,6 +772,10 @@ contract ProofOfCapital with Deployable, Ownable {
                         self.callJettonsID = 0;
                     } else {
                         if (self.totalJettonsSold == self.offsetJettons && (self.offsetJettons - self.jettonsEarned) >= msg.amount) {
+                            
+                            let gasMinimum = 2 + msg.amount / (5 * self.sizeOffsetStep);
+                            require(gasMinimum < 20, "Too much value for gas");
+                            require(value >= gasMinimum * self.commission, "Amount of TON must be greater than minimal");
                             // @misti:suppress UnusedExpressionResult
                             self.calculateChangeOffsetJetton(msg.amount);
                         } else {
@@ -771,7 +783,9 @@ contract ProofOfCapital with Deployable, Ownable {
                         }
                     }
                 } else if (msg.sender == self.returnWalletAddress) {
-                    require(value >= self.commission, "Amount must be greater than 0.05");
+                    let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevelEarned);
+                    require(gasMinimum < 20, "Too much value for gas");
+                    require(value >= gasMinimum * self.commission, "Amount must be greater than minimal");
                     let amount: Int = msg.amount;
                     let supportAmountToPay: Int = 0;
                     let tokensAvailableForReturnBuyback: Int = self.totalJettonsSold - self.jettonsEarned;
@@ -817,13 +831,17 @@ contract ProofOfCapital with Deployable, Ownable {
                         }
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
-                    require(value > 2 * self.commission, "Amount must be greater than minimal");
+
+                    let gasMinimum = 4 + msg.amount / (4 * self.quantityJettonsPerLevel);
+                    require(gasMinimum < 20, "Too much value for gas");
+                    require(value >= gasMinimum * self.commission, "Amount must be greater than minimal");
+
                     let tokensAvailableForBuyback: Int = self.totalJettonsSold - max(self.offsetJettons, self.jettonsEarned);
                     let tokenForBuyback: Int = msg.amount;
                     require(tokensAvailableForBuyback > 0, "Not have tokensAvailableForBuyback");
                     require(tokensAvailableForBuyback >= tokenForBuyback, "Insufficient tokens available for buyback");
-                    let supportAmountToPay: Int = self.calculateSupportToPayForTokenAmount(tokenForBuyback);
 
+                    let supportAmountToPay: Int = self.calculateSupportToPayForTokenAmount(tokenForBuyback);
                     require(self.contractSupportBalance >= supportAmountToPay, "Not enough support balance");
 
                     self.contractSupportBalance -= supportAmountToPay;
@@ -1636,8 +1654,8 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     get fun unused_support_ton(): Int {
-        let unused_amount: Int = myBalance() - self.contractSupportBalance - (self.commission * COMMISSION_MULTIPLIER);
-        return unused_amount;
+        let unusedAmount: Int = myBalance() - self.contractSupportBalance - (self.commission * COMMISSION_MULTIPLIER);
+        return unusedAmount;
     }
 
     get fun control_day(): Int {

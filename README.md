@@ -51,6 +51,15 @@ yarn create ton ContractName
 
 When creating, select `An empty contract (TACT)`.
 
+### Activate the latest compiler version
+
+At the time of writing this guide, version 1.6.7 is in use.
+```bash
+npx @tact-lang/compiler@1.6.7
+# or
+yarn add @tact-lang/compiler@1.6.7
+```
+
 ### Build
 
 ```bash
@@ -97,6 +106,8 @@ During initialization and deployment of the contract in Tact, the following vari
 | **jettonSupport**                         | `Bool`           | Enables purchasing jettons with other jettons (e.g., USDT).               |
 | **jettonCollateralMasterAddress**            | `Address`        | Address of the collateral jetton master contract (if collateral is enabled). |
 | **royaltyProfitPercentage**               | `Int as uint16`  | Percentage of profit sent to the royalty wallet.                          |
+| **coefficientProfit**               | `Int as uint16`  | Profit percentage in the initial steps (before the trend changes)                          |
+| **jettonDecimals**               | `Int as uint32`  | Number of smallest units in one jetton (9 for standard tokens)                          |
 
 ---
 
@@ -107,8 +118,8 @@ The Proof of Capital contract is designed to manage the issuance of capital-back
 ### Contract Functions
 
 1. **Deployment and Initial Setup:**
-   - After deploying the contract, the creator replenishes it with jettons and sets a lock for **six months** or **10 minutes** (for initial contract testing).
-   - The creator can extend the **lock** for an additional period: **six months** or **10 minutes**.
+   - After deploying the contract, the creator replenishes it with jettons and sets a lock for **six months**, **three months** or **10 minutes** (for initial contract testing).
+   - The creator can extend the **lock** for an additional period: **six months**, **three months** or **10 minutes**.
 
 2. **Interacting with the Contract:**
    - **Market Maker:**

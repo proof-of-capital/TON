@@ -51,6 +51,15 @@ yarn create ton ContractName
 ```
 Al crear, selecciona `An empty contract (TACT)`.
 
+### Activar la versión actual del compilador
+
+En el momento de redactar esta instrucción se utiliza la versión 1.6.7.
+```bash
+npx @tact-lang/compiler@1.6.7
+# o
+yarn add @tact-lang/compiler@1.6.7
+```
+
 ### Compilación
 
 ```bash
@@ -97,6 +106,8 @@ Durante la inicialización y el despliegue del contrato en Tact, se establecen l
 | **jettonSupport**                     | `Bool`             | Activa la compatibilidad para compras de tokens con otros tokens (ej., USDT).  |
 | **jettonCollateralMasterAddress**        | `Address`          | Dirección del contrato maestro del token como garantía (si está habilitado). |
 | **royaltyProfitPercentage**           | `Int as uint16`    | Porcentaje del beneficio enviado a la billetera de regalías.              |
+| **coefficientProfit**           | `Int as uint16`    | Porcentaje de beneficio en los pasos iniciales (hasta que cambie la tendencia)              |
+| **jettonDecimals**           | `Int as uint16`    | Cantidad de unidades mínimas en un solo jetón (para los tokens clásicos, 9)              |
 
 ---
 
@@ -107,8 +118,8 @@ El contrato Proof of Capital está diseñado para gestionar la emisión de token
 ### Funciones del contrato
 
 1. **Despliegue y configuración inicial:**
-   - Tras el despliegue del contrato, el creador lo financia con tokens y establece un bloqueo (**lock**) de **seis meses** o **10 minutos** (para pruebas iniciales del contrato).
-   - El creador puede prolongar el **lock** por un período adicional: **seis meses** o **10 minutos**.
+   - Tras el despliegue del contrato, el creador lo financia con tokens y establece un bloqueo (**lock**) de **seis meses**, **tres meses** o **10 minutos** (para pruebas iniciales del contrato).
+   - El creador puede prolongar el **lock** por un período adicional: **seis meses**, **tres meses** o **10 minutos**.
 
 2. **Interacción con el contrato:**
    - **Creador del Mercado**:
