@@ -1,54 +1,62 @@
-import { Address, toNano, beginCell, Cell} from '@ton/core';
+import { toNano } from '@ton/core';
 import { ProofOfCapital } from '../wrappers/ProofOfCapital';
 import { NetworkProvider } from '@ton/blueprint';
+import * as address from './!allAddresses';
 
 export async function run(provider: NetworkProvider) {
-    const owner = Address.parse("UQC6l0ZX3YjD7ux6tdHAkZGVmI1OBszhBBNcCWAaRkdoYC1x");
-    const marketMaker = Address.parse("UQCbkByV1v1DOu95gMLxXwAivnNwQ7kUp4qkekMQ9FtwErEu");
-    const jettonMasterAddress = Address.parse("EQBp6FAkDdHD_lLKUBI-J-Et5zQeyJlixc6f3iKHBie85Fd-");
-    const returnWalletAddress = Address.parse("UQCUtOic7l-fD7K2eNhFmmwHNDVs0SAJj5TWbOkQ8l6Fv5BI");
-    const royaltyWalletAddress = Address.parse("UQCUtOic7l-fD7K2eNhFmmwHNDVs0SAJj5TWbOkQ8l6Fv5BI");
     const lockEndTime = BigInt(Math.floor(Date.now() / 1000));
     const initialPricePerToken = 15000n;
-    const firstLevelJettonQuantity = 5000000000000000n;
+    const firstLevelJettonQuantity = toNano(5000000n);
     const priceIncrementMultiplier = 50n;
     const levelIncreaseMultiplier = 20n;
     const trendChangeStep = 20n;
-    const levelIncreaseMultiplierafterTrend = 9n;
+    const levelDecreaseMultiplierafterTrend = 9n;
     const profitPercentage = 100n;
+    const offsetJettons = toNano(15000n);
+    const controlPeriod = 60n;
+    const jettonSupport = true;
+    const royaltyProfitPercent = 200n;
+    const coefficientProfit = 200n;
+    const jettonDecimals = toNano(1n);
 
     console.log("-------")
     console.log(lockEndTime)
 
     let proofOfCapital
-    do {
+    // do {
       let id = BigInt(Math.floor(Math.random() * 1000000000));
 
       proofOfCapital = provider.open(await ProofOfCapital.fromInit(
         id,
-        owner,
-        marketMaker,
-        jettonMasterAddress,
-        //jetton_data,
-        returnWalletAddress,
-        royaltyWalletAddress,
+        address.owner,
+        address.marketMaker,
+        address.launchJettonMasterAddress,
+        address.returnWalletAddress,
+        address.royaltyWalletAddress,
         lockEndTime,
         initialPricePerToken,
         firstLevelJettonQuantity,
         priceIncrementMultiplier,
         levelIncreaseMultiplier,
         trendChangeStep,
-        levelIncreaseMultiplierafterTrend,
-        profitPercentage)
+        levelDecreaseMultiplierafterTrend,
+        profitPercentage,
+        offsetJettons,
+        controlPeriod,
+        jettonSupport,
+        address.jettonSupportMaster,
+        royaltyProfitPercent,
+        coefficientProfit,
+        jettonDecimals)
       );
       console.log(id)
       console.log(proofOfCapital.address.toString())
       console.log()
-    } while(!proofOfCapital.address.toString().match(/(_P0K|-P0K|_POK|-POK)$/))
+    // } while(!proofOfCapital.address.toString().match(/(A|B)$/))
     await proofOfCapital.send(
         provider.sender(),
         {
-            value: toNano('0.05'),
+            value: toNano('0.1'), // put more tons if offset is large
         },
         {
             $$type: 'Deploy',

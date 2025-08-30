@@ -4,34 +4,39 @@
 
 ---
 
-Proof of Capital is a smart market-making technology (smart contract) that protects the interests of all holders. Creators transfer all the free issuance of their asset to the contract, and coins are released only for TON, which remains on the contract as collateral. The contract can both sell coins, receiving collateral from upper levels, and accept the return of coins to release collateral from lower levels, thereby increasing the minimum price of the asset.
+Proof of Capital is a smart market-making technology (smart contract) that protects the interests of all holders.
+
+Creators transfer all of their asset's emission to the contract, and coins are released only in exchange for TON or, when support is enabled, any other token, which remain in the contract as collateral. The contract allows both selling coins, receiving collateral from the upper levels, and returning coins to release collateral from the lower levels, thereby increasing the minimum price per asset.
+
+The contract supports launching both from scratch and taking into account the asset's previous history. To do this, you can set an offset parameter—the equivalent of previously sold coins—which allows the contract to start operation from the desired price level and collateral balance. This is especially important for existing projects transitioning to Proof of Capital.
 
 ---
 
-## Contents
+## Table of Contents
 
-- [Project Structure - Blueprint](#project-structure---blueprint)
-- [Running the Contract](#running-the-contract)
-  - [Add a New Contract](#add-a-new-contract)
-  - [Build](#build)
-  - [Testing](#testing)
-  - [Deployment or Running a Script](#deployment-or-running-a-script)
-- [Main Provisions](#main-provisions)
-  - [Variables Defined During Initialization and Deployment of the Contract](#variables-defined-during-initialization-and-deployment-of-the-contract)
-  - [Description of Variables](#description-of-variables)
-- [Principle of Contract Operation](#principle-of-contract-operation)
-  - [Contract Functions](#contract-functions)
-  - [Important Notes](#important-notes)
-- [Accessing Getter Functions](#accessing-getter-functions)
-- [Contact Information](#contact-information)
+- [Proof of Capital](#proof-of-capital)
+  - [Table of Contents](#table-of-contents)
+  - [Blueprint Project Structure](#blueprint-project-structure)
+  - [Running the Contract](#running-the-contract)
+    - [Add a New Contract](#add-a-new-contract)
+    - [Build](#build)
+    - [Deployment or Running a Script](#deployment-or-running-a-script)
+  - [Key Provisions](#key-provisions)
+    - [Variables Set During Initialization and Deployment](#variables-set-during-initialization-and-deployment)
+    - [Variable Descriptions](#variable-descriptions)
+  - [Contract Operation Principle](#contract-operation-principle)
+    - [Contract Functions](#contract-functions)
+    - [Important Notes](#important-notes)
+  - [Calling Getter Functions](#calling-getter-functions)
+  - [Contact Information](#contact-information)
 
 ---
 
-## Project Structure - Blueprint
+## Blueprint Project Structure
 
-- `contracts` — source code of all smart contracts of the project and their dependencies.
+- `contracts` — source code of all the project's smart contracts and their dependencies.
 - `wrappers` — wrappers (classes implementing `Contract` from ton-core) for contracts, including primitives for [de]serialization and compilation functions.
-- `tests` — tests for contracts.
+- `tests` — tests for the contracts.
 - `scripts` — scripts used in the project, mainly for deployment.
 
 ## Running the Contract
@@ -43,7 +48,17 @@ npx blueprint create ContractName
 # or
 yarn create ton ContractName
 ```
+
 When creating, select `An empty contract (TACT)`.
+
+### Activate the latest compiler version
+
+At the time of writing this guide, version 1.6.7 is in use.
+```bash
+npx @tact-lang/compiler@1.6.7
+# or
+yarn add @tact-lang/compiler@1.6.7
+```
 
 ### Build
 
@@ -51,14 +66,6 @@ When creating, select `An empty contract (TACT)`.
 npx blueprint build
 # or
 yarn blueprint build
-```
-
-### Testing
-
-```bash
-npx blueprint test
-# or
-yarn blueprint test
 ```
 
 ### Deployment or Running a Script
@@ -71,85 +78,88 @@ yarn blueprint run
 
 ---
 
-## Main Provisions
+## Key Provisions
 
-### Variables Defined During Initialization and Deployment of the Contract
+### Variables Set During Initialization and Deployment
 
 During initialization and deployment of the contract in Tact, the following variables are set, which define the main settings of the contract and its initial state:
 
-### Description of Variables
+### Variable Descriptions
 
-| Variable                              | Data Type         | Description                                                         |
-|---------------------------------------|-------------------|---------------------------------------------------------------------|
-| **owner**                             | `Address`         | Address of the contract owner.                                      |
-| **marketMakerAddress**                | `Address`         | Address of the market maker.                                        |
-| **jettonMasterAddress**               | `Address`         | Address of the jetton master contract.                              |
-| **returnWalletAddress**               | `Address`         | Address of the wallet for returns.                                  |
-| **royaltyWalletAddress**              | `Address`         | Address of the royalty wallet.                                      |
-| **lockEndTime**                       | `Int as uint64`   | End time of the lock (in seconds since UNIX epoch).                 |
-| **initialPricePerToken**              | `Int as coins`    | Initial price per jetton.                                           |
-| **firstLevelJettonQuantity**          | `Int as coins`    | Number of jettons at the first level.                               |
-| **priceIncrementMultiplier**          | `Int as uint16`   | Multiplier for increasing the price per jetton.                     |
-| **levelIncreaseMultiplier**           | `Int as uint16`   | Multiplier for increasing the level.                                |
-| **trendChangeStep**                   | `Int as uint8`    | Step for trend change.                                              |
-| **levelIncreaseMultiplierafterTrend** | `Int as uint16`   | Multiplier for decreasing the level after trend change.             |
-| **profitPercentage**                  | `Int as uint16`   | Profit percentage.                                                  |
+| Variable                                  | Data Type        | Description                                                               |
+|-------------------------------------------|------------------|---------------------------------------------------------------------------|
+| **owner**                                 | `Address`        | Address of the contract owner.                                            |
+| **marketMakerAddress**                    | `Address`        | Address of the market maker.                                              |
+| **launchJettonMasterAddress**                   | `Address`        | Address of the jetton master contract.                                    |
+| **returnWalletAddress**                   | `Address`        | Address of the wallet for returning funds.                                |
+| **royaltyWalletAddress**                  | `Address`        | Address of the royalty wallet.                                            |
+| **lockEndTime**                           | `Int as uint64`  | Lock end time (in seconds since the UNIX epoch).                          |
+| **initialPricePerToken**                  | `Int as coins`   | Initial price per jetton.                                                 |
+| **firstLevelJettonQuantity**              | `Int as coins`   | Quantity of jettons at the first level.                                   |
+| **priceIncrementMultiplier**              | `Int as uint16`  | Multiplier for increasing the price per jetton.                           |
+| **levelIncreaseMultiplier**               | `Int as uint16`  | Multiplier for increasing the level.                                      |
+| **trendChangeStep**                       | `Int as uint8`   | Step for changing the trend.                                              |
+| **levelDecreaseMultiplierafterTrend**     | `Int as uint16`  | Multiplier for decreasing the level after a trend change.                 |
+| **profitPercentage**                      | `Int as uint16`  | Profit percentage.                                                        |
+| **offsetJettons**                         | `Int as coins`   | Number of previously sold jettons (historical offset).                    |
+| **controlPeriod**                         | `Int as uint32`  | Duration of the "unlock window" in UNIX seconds.                          |
+| **jettonCollateral**                         | `Bool`           | Enables purchasing jettons with other jettons (e.g., USDT).               |
+| **jettonCollateralMasterAddress**            | `Address`        | Address of the collateral jetton master contract (if collateral is enabled). |
+| **royaltyProfitPercentage**               | `Int as uint16`  | Percentage of profit sent to the royalty wallet.                          |
+| **coefficientProfit**               | `Int as uint16`  | Profit percentage in the initial steps (before the trend changes)                          |
+| **jettonDecimals**               | `Int as uint32`  | Number of smallest units in one jetton (10 ** 9 for standard tokens)                          |
 
 ---
 
-## Principle of Contract Operation
+## Contract Operation Principle
 
-The Proof of Capital contract is designed to manage the issuance of jettons backed by capital, with transparent conditions for emission and buyback.
+The Proof of Capital contract is designed to manage the issuance of capital-backed jettons, with transparent conditions for emission and buyback.
 
 ### Contract Functions
 
 1. **Deployment and Initial Setup:**
-   - After deploying the contract, the creator replenishes it with jettons and sets a lock for **six months** or **10 minutes** (for initial testing of the contract).
-   - The creator can extend the **lock** for an additional period: **six months** or **10 minutes**.
+   - After deploying the contract, the creator replenishes it with jettons and sets a lock for **six months**, **three months** or **10 minutes** (for initial contract testing).
+   - The creator can extend the **lock** for an additional period: **six months**, **three months** or **10 minutes**.
 
-2. **Interaction with the Contract:**
+2. **Interacting with the Contract:**
    - **Market Maker:**
-     - During the lock period, only the market maker can exchange tokens with the contract.
-     - Market maker has the right to buy and sell jettons, balancing the price on the contract with prices in pools on DEX.
+     - During the lock period and when the "unlock window" is not active, only the market maker can exchange tokens with the contract.
+     - They have the right to buy and sell jettons, aligning the contract's price with prices in DEX pools.
    - **Other Users:**
-     - **Two months before the end of the lock**, all users can interact with the contract.
-     - They can return the jettons purchased from the contract back to the contract in exchange for collateral.
+     - **Two months before the lock ends,** everyone can interact with the contract.
+     - Before this point, interaction with the contract is possible during special periods called **"unlock windows."**
+     - During the "unlock window" and two months before the lock ends, anyone can return the jettons they purchased from the contract in exchange for collateral.
    - **Return Wallet:**
      - A special wallet from which tokens are returned to the contract, releasing collateral from lower levels.
-     - This is an alternative to the burning procedure, aiming to use the earned tokens in the future as capitalization grows.
+     - This is an alternative to the burning procedure to use the earned tokens in the future as capitalization grows.
 
-
-3. **Lock Expiration:**
-   - After the lock period ends, the creator can withdraw all tokens and all TON from the contract.
+3. **Completion of Lock:**
+   - After the lock ends, the creator can withdraw all coins and all collateral from the contract.
 
 ### Important Notes
 
 - **Use Getter Functions:**
-  - When working with the contract, always use the getter functions to check the results of your operations **before** executing them.
+  - When working with the contract, always use getter functions to check the results of your operations **before** executing them.
   - This will help avoid unexpected results.
 
 - **Interacting with the Contract:**
-  - **Never send coins (tokens) directly from your wallet to the contract.**
-    - If you send tokens without calling the corresponding functions, the contract can't process the transaction, and your coins will be lost.
-  - If you send TON directly:
-    - The contract will reject the operation if more than two months remain until the end of the lock.
-    - The contract can send you coins (jettons) if less than two months remain until the end of the lock.
-    - **Be sure to check the results of the getter functions before interacting with the contract.** If the contract does not have enough jettons, it will send you all that remains. If no coins remain, the TON will be credited to the contract’s balance.
+  - Never send coins (jettons) directly from your wallet to the contract.
+    - If you send jettons without calling the appropriate functions, the contract may not process the transaction, and your coins may be lost.
+  - If you send TON directly (provided collateral is in TON):
+    - The contract may reject the operation if more than two months remain until the lock ends or if collateralization in another coin is enabled.
+    - The contract may send you coins (jettons) if less than two months remain until the lock ends or if a special "unlock window" is active.
+    - Always check the results of getter functions before interacting with the contract. If the contract does not have enough jettons, it will send all that remains. If no coins are left, the TON will simply go to the contract's balance.
+  - Similar rules apply for collateral in another coin; however, such interaction is carried out not directly but through special software tools.
 
-
-- **Features of Selling Jetton Remainders:**
-  - If you attempt to return more jettons than the contract is set to buy back, you will receive the entire remaining TON balance reserved for buybacks, while the excess jettons will be transferred to the contract’s balance.
-  - **Be sure to study the output of the `jetton_available` getter function before sending jettons to the contract.**
-
-- **Profit and Commissions:**
-  - **20%** of the profit is directed to the **Royalty** wallet specified on the website [proofofcapital.org](https://proofofcapital.org).
-  - **80%** is allocated to the creator’s wallet for development and marketing purposes.
+- **Profit and Fees:**
+  - The contract supports **dynamic configuration of profit distribution** between the owner (as a fund for development and marketing) and the royalty wallet, including the ability to switch profit withdrawal mode—immediately or upon request.
+  - The **Royalty** wallet is specified on the website [proofofcapital.org](https://proofofcapital.org).
 
 ---
 
-## Accessing Getter Functions
+## Calling Getter Functions
 
-To obtain data on the current state of the contract and the results of internal functions, you can use the getter functions:
+To obtain data about the current state of the contract and the results of internal functions, you can use getter functions:
 
 1. Go to **TON Viewer** or a similar tool.
 2. Open the **Methods** tab.
@@ -157,16 +167,16 @@ To obtain data on the current state of the contract and the results of internal 
 4. If necessary, add arguments.
 5. Click the **Execute** button to perform the request.
 
-**We recommend** always using the getter functions before performing operations to check the expected results.
+**We recommend** always using getter functions before performing operations to verify the expected results.
 
 ---
 
 ## Contact Information
 
-For any questions, please contact us via the contact details listed on the website [proofofcapital.org](https://proofofcapital.org).
+For any questions, please contact us using the details provided on the website [proofofcapital.org](https://proofofcapital.org).
 
-We have passed the second audit, which will be published for the current version of the contract. We are currently preparing to release the next version, which will take into account all auditors' recommendations. An example operating on this version of the contract is available [at this link](https://tonviewer.com/EQBGN2w9fUVNfJ0IBKDQ2vVy6S_lDug4q1UYdRhkFA-r_POK).
+In early February, we passed a second audit, which was published in the previous version of the contract. An example of a working contract based on the second version is available [here](https://tonviewer.com/EQBGN2w9fUVNfJ0IBKDQ2vVy6S_lDug4q1UYdRhkFA-r_POK).
 
----
+Now we have released the third version of the contract (current), taking into account all the wishes of users and clients, and have also successfully passed a third audit, which will be published for the current version of the contract.
 
-**Attention!** Sending coins directly to the contract and conducting transactions without prior analysis of the getter functions' output may lead to loss of funds. Always check the address and use the provided methods for interacting with the contract.
+Follow important news and updates on our Telegram channel: [@pocorg](https://t.me/pocorg).
