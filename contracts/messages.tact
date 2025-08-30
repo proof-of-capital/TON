@@ -129,10 +129,6 @@ message GetNumberOfMarketMakers {
     currentNumber: Int as uint8;
 }
 
-
-
-
-
 message(0x163572b9) PurchaseIsSuccess {
 } 
 

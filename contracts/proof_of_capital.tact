@@ -883,7 +883,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.farm, "Access is only for the farm");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
-        self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.farm, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission); // todo fix farm
+        self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.farm, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractJettonBalance = 0;
         self.isActive = false;
     }
@@ -896,7 +896,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         require(self.jettonCollateral, "Jetton collateral is not used.");
-        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.farm, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission); // todo fix farm
+        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.farm, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractCollateralBalance = 0;
         self.isActive = false;
     }

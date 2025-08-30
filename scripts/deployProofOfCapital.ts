@@ -56,7 +56,7 @@ export async function run(provider: NetworkProvider) {
     await proofOfCapital.send(
         provider.sender(),
         {
-            value: toNano('0.1'),
+            value: toNano('0.1'), // put more tons if offset is large
         },
         {
             $$type: 'Deploy',
