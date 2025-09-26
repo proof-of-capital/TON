@@ -462,7 +462,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Changes the commission value.
     receive(msg: ChangeCommissionValue) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(msg.commissionValue >= FIVE_HUNDREDTHS_TON && msg.commissionValue <= ton("10"), "Amount must be greater than 0.05");
+        require(msg.commissionValue >= SIX_HUNDREDTHS_TON && msg.commissionValue <= ton("10"), "Amount must be greater than 0.05");
         self.commission = msg.commissionValue;
     }
 
@@ -1889,7 +1889,7 @@ contract ProofOfCapital with Deployable, Ownable {
         contractState.append("|TMC:");
         contractState.append(TEN_MINUTES.toString());
         contractState.append("|CC:");
-        contractState.append(FIVE_HUNDREDTHS_TON.toCoinsString());
+        contractState.append(SIX_HUNDREDTHS_TON.toCoinsString());
         contractState.append("|SDC:");
         contractState.append(THIRTY_DAYS.toString());
         contractState.append("|MCP:");
