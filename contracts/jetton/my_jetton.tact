@@ -22,6 +22,7 @@ contract MyJetton with Jetton {
     }
 
     receive(msg: Mint) { // 0xfc708bd2
+        // @misti:suppress PreferSenderFunction
         let ctx: Context = context();
         require(ctx.sender == self.owner, "Not owner");
         require(self.mintable, "Not mintable");
@@ -30,6 +31,7 @@ contract MyJetton with Jetton {
     }
 
     receive("Mint: 100") { // Public Minting
+        // @misti:suppress PreferSenderFunction
         let ctx: Context = context();
         require(self.mintable, "Not mintable");
         require(self.total_supply + 100 <= self.max_supply, "Max supply exceeded");
@@ -37,6 +39,7 @@ contract MyJetton with Jetton {
     }
 
     receive("Owner: MintClose") {
+        // @misti:suppress PreferSenderFunction
         let ctx: Context = context();
         require(ctx.sender == self.owner, "Not owner");
         self.mintable = false;

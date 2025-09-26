@@ -18,6 +18,7 @@ trait Jetton with Ownable {
         self.total_supply = (self.total_supply - msg.amount); // Update supply
         if (msg.response_destination != null) {
             // Cashback
+            // @misti:suppress SuboptimalSend
             send(SendParameters{
                     to: msg.response_destination!!,
                     value: 0,
@@ -35,6 +36,7 @@ trait Jetton with Ownable {
         require(context().value >= ton("0.0061"), "Insufficient gas");
         let init: StateInit = initOf JettonDefaultWallet(msg.owner_address, myAddress());
         if (msg.include_address) {
+            // @misti:suppress SuboptimalSend
             send(SendParameters{
                     to: sender(),
                     value: 0,
@@ -47,6 +49,7 @@ trait Jetton with Ownable {
                 }
             );
         } else {
+            // @misti:suppress SuboptimalSend
             send(SendParameters{
                     to: sender(),
                     value: 0,
@@ -70,6 +73,7 @@ trait Jetton with Ownable {
         self.total_supply = (self.total_supply + amount); // Update total supply
 
         let winit: StateInit = self.getJettonWalletInit(to); // Create message
+        // @misti:suppress SuboptimalSend
         send(SendParameters{
                 to: contractAddress(winit),
                 value: 0,
@@ -90,6 +94,7 @@ trait Jetton with Ownable {
     }
 
     fun requireSenderAsWalletOwner(owner: Address) {
+        // @misti:suppress PreferSenderFunction
         let ctx: Context = context();
         let winit: StateInit = self.getJettonWalletInit(owner);
         require(contractAddress(winit) == ctx.sender, "Invalid sender");
@@ -128,6 +133,7 @@ contract JettonDefaultWallet
     owner: Address;
     master: Address;
     init(owner: Address, master: Address){
+        // @misti:suppress FieldDoubleInit
         self.balance = 0;
         self.owner = owner;
         self.master = master;
@@ -145,6 +151,7 @@ contract JettonDefaultWallet
         require(self.balance >= 0, "Invalid balance");
         let init: StateInit = initOf JettonDefaultWallet(msg.recipient, self.master);
         let wallet_address: Address = contractAddress(init);
+        // @misti:suppress SuboptimalSend
         send(SendParameters{
                 to: wallet_address,
                 value: 0,
@@ -179,6 +186,7 @@ contract JettonDefaultWallet
         let fwd_fee: Int = ctx.readForwardFee();
         if (msg.forward_ton_amount > 0) {
             msg_value = ((msg_value - msg.forward_ton_amount) - fwd_fee);
+            // @misti:suppress SuboptimalSend
             send(SendParameters{
                     to: self.owner,
                     value: msg.forward_ton_amount,
@@ -195,6 +203,7 @@ contract JettonDefaultWallet
         }
         // 0xd53276db -- Cashback to the original Sender
         if (msg.response_destination != null && msg_value > 0) {
+            // @misti:suppress SuboptimalSend
             send(SendParameters{
                     to: msg.response_destination!!,
                     value: msg_value,
@@ -215,6 +224,7 @@ contract JettonDefaultWallet
         let fwd_fee: Int = ctx.readForwardFee(); // Gas checks
         require(ctx.value > ((fwd_fee + 2 * self.gasConsumption) + self.minTonsForStorage), "Invalid value - Burn");
         // Burn tokens
+        // @misti:suppress SuboptimalSend
         send(SendParameters{
                 to: self.master,
                 value: 0,
