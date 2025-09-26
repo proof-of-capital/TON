@@ -34,7 +34,7 @@ const SIXTY_DAYS: Int = 5_184_000; // Starting 60 days before the lock-up ends, 
 const THREE_MONTHS: Int = 7_776_000; // 3 months (used for lock extension)
 const HALF_YEAR: Int = 15_768_000; // half a year (used for lock extension)
 const TWO_YEARS: Int = 63_072_000; // 2 years (used as the maximum lock extension period)
-const FIVE_HUNDREDTHS_TON: Int = ton("0.05"); // minimum TON amount for covering fees
+const SIX_HUNDREDTHS_TON: Int = ton("0.06"); // minimum TON amount for covering fees
 const COMMISSION_MULTIPLIER: Int = 10; // commission multiplier (used to calculate the remaining contract balance when withdrawing TON equal to 10 times the fee)
 
 const MAX_PERCENT: Int = 1000; // Maximum percentage value
@@ -123,7 +123,6 @@ contract ProofOfCapital with Deployable, Ownable {
     creatorProfitPercent: Int as uint16; // Owner profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
     coefficientProfit: Int as uint16; // Coefficient for calculating the profit percentage (from 1 (100 %) to MAX_PERCENT (10000 %))
 
-
     canWithdrawal: Bool = true; // Flag indicating whether early delayed withdrawal is allowed (true – allowed, false – prohibited)
 
     // Deferred withdrawal
@@ -198,7 +197,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.remainderOfStepEarned = firstLevelJettonQuantity;
         self.quantityJettonsPerLevelEarned = firstLevelJettonQuantity;
         self.currentPriceEarned = initialPricePerToken;
-        self.commission = FIVE_HUNDREDTHS_TON;
+        self.commission = SIX_HUNDREDTHS_TON;
         self.controlDay = now() + THIRTY_DAYS;
 
         self.offsetJettons = offsetJettons;
