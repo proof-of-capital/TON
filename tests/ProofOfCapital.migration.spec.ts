@@ -21,6 +21,73 @@ function expectBigIntClose(received: bigint, expected: bigint, tolerance: bigint
     expect(diff <= tolerance).toBe(true);
 }
 
+// Helper function to process unaccounted collateral balance
+async function processUnaccountedBalance(
+    contract: SandboxContract<ProofOfCapital>,
+    owner: SandboxContract<TreasuryContract>,
+    description: string,
+    n: number = 3
+) {
+    let unaccountedBalance = await contract.getUnaccountedCollateralBalance();
+    console.log(`${description} - Initial unaccounted balance:`, unaccountedBalance.toString());
+    
+    if (unaccountedBalance > 0n) {
+        // Process in n steps
+        for (let i = 1; i <= n; i++) {
+            const currentBalance = await contract.getUnaccountedCollateralBalance();
+            if (currentBalance <= 0n) break;
+            
+            // Calculate amount for this step (1/n of remaining balance)
+            const stepAmount = currentBalance / BigInt(n - i + 1);
+            // console.log(`${description} - Step ${i} amount:`, stepAmount.toString());
+            
+            if (stepAmount > 0n) {
+                const result = await contract.send(
+                    owner.getSender(),
+                    { value: toNano('15.2') },
+                    {
+                        $$type: 'CalculateUnaccountedCollateralBalance',
+                        queryId: 0n,
+                        amount: stepAmount,
+                    },
+                );
+
+                expect(result.transactions).toHaveTransaction({
+                    from: owner.address,
+                    to: contract.address,
+                    success: true,
+                });
+
+                await verifyTransactions(result.transactions, owner.address);
+            }
+        }
+
+        // Process any remaining balance
+        const finalRemainingBalance = await contract.getUnaccountedCollateralBalance();
+        console.log(`${description} - Final remaining balance:`, finalRemainingBalance.toString());
+        
+        if (finalRemainingBalance > 0n) {
+            const result = await contract.send(
+                owner.getSender(),
+                { value: toNano('15.2') },
+                {
+                    $$type: 'CalculateUnaccountedCollateralBalance',
+                    queryId: 0n,
+                    amount: finalRemainingBalance,
+                },
+            );
+
+            expect(result.transactions).toHaveTransaction({
+                from: owner.address,
+                to: contract.address,
+                success: true,
+            });
+
+            await verifyTransactions(result.transactions, owner.address);
+        }
+    }
+}
+
 describe('ProofOfCapital', () => {
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
@@ -422,6 +489,8 @@ describe('ProofOfCapital', () => {
         await verifyTransactions(confirmLaunchWithdrawalResult.transactions, owner.address, proofOfCapital.address);
         await verifyTransactions(confirmCollateralWithdrawalResult.transactions, owner.address);
 
+        // Process unaccounted collateral balance in 3 steps
+        await processUnaccountedBalance(newPocContract, owner, 'First test', 3);
         const newPocContractCollateralBalance = await newPocContract.getCollateralTokenBalance();
         const newPocContractJettonBalance = await newPocContract.getJettonBalance();
 
@@ -477,7 +546,7 @@ describe('ProofOfCapital', () => {
         const ownerLaunchJettonWallet = blockchain.openContract(
             await JettonWallet.fromInit(marketMaker.address, supportJetton.address, 0n),
         );
-        for (let i = 0; i < 115; i++) {
+        for (let i = 0; i < 165; i++) {
             const sendLaunchFromMarketMakerToPoc = await ownerLaunchJettonWallet.send(
                 marketMaker.getSender(),
                 { value: toNano('14.6') },
@@ -578,7 +647,7 @@ describe('ProofOfCapital', () => {
         const deployNewPocResult = await newPocContract.send(
             deployer.getSender(),
             {
-                value: toNano('1'),
+                value: toNano('10'),
             },
             {
                 $$type: 'Deploy',
@@ -590,6 +659,17 @@ describe('ProofOfCapital', () => {
             from: deployer.address,
             to: newPocContract.address,
             deploy: true,
+            success: true,
+        });
+
+        expect(deployNewPocResult.transactions).toHaveTransaction({
+            from: launchJetton.address,
+            to: newPocContract.address,
+            success: true,  
+        });
+        expect(deployNewPocResult.transactions).toHaveTransaction({
+            from: supportJetton.address,
+            to: newPocContract.address,
             success: true,
         });
 
@@ -722,8 +802,11 @@ describe('ProofOfCapital', () => {
         await verifyTransactions(confirmLaunchWithdrawalResult.transactions, owner.address, proofOfCapital.address);
         expect(confirmCollateralWithdrawalResult.transactions).toHaveTransaction({
             to: newPocContract.address,
-            success: false,
-            exitCode: -14,
+            success: true,
         });
+
+        // Process unaccounted collateral balance in 3 steps
+        await processUnaccountedBalance(newPocContract, owner, 'Second test', 10);
+       
     });
 });

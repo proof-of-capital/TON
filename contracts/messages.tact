@@ -190,3 +190,8 @@ message CollateralBuyback {}
 message TransferAllLaunchJettonsToOwner {}
 
 message SendAllCollateralBalanceToOwner {}
+
+message CalculateUnaccountedCollateralBalance {
+    queryId: Int as uint64;
+    amount: Int as coins;
+}
