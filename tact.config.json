@@ -1,1 +1,10 @@
-{"projects":[{"name":"ProofOfCapital","path":"contracts/proof_of_capital.tact","output":"/tmp/tact-output","options":{"debug":true}}]}
+{
+    "projects": [
+        {
+            "name": "ProofOfCapital",
+            "path": "contracts/proof_of_capital.tact",
+            "output": "/tmp/tact-output",
+            "options": { "debug": true }
+        }
+    ]
+}
