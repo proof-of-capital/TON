@@ -3,7 +3,7 @@
       {
         "name": "Jetton",
         "path": "contracts/jetton/base/jetton-minter.tact",
-        "output": "./src/output",
+        "output": "/tmp/tact-output",
         "mode": "full",
         "options": {
           "external": false,
