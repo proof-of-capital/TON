@@ -21,6 +21,73 @@ function expectBigIntClose(received: bigint, expected: bigint, tolerance: bigint
     expect(diff <= tolerance).toBe(true);
 }
 
+// Helper function to process unaccounted offset balance
+async function processUnaccountedOffsetBalance(
+    contract: SandboxContract<ProofOfCapital>,
+    owner: SandboxContract<TreasuryContract>,
+    description: string,
+    n: number = 3
+) {
+    let unaccountedBalance = await contract.getUnaccountedOffsetBalance();
+    console.log(`${description} - Initial unaccounted offset balance:`, unaccountedBalance.toString());
+    
+    if (unaccountedBalance > 0n) {
+        // Process in n steps
+        for (let i = 1; i <= n; i++) {
+            const currentBalance = await contract.getUnaccountedOffsetBalance();
+            if (currentBalance <= 0n) break;
+            
+            // Calculate amount for this step (1/n of remaining balance)
+            const stepAmount = currentBalance / BigInt(n - i + 1);
+            // console.log(`${description} - Step ${i} amount:`, stepAmount.toString());
+            
+            if (stepAmount > 0n) {
+                const result = await contract.send(
+                    owner.getSender(),
+                    { value: toNano('15.2') },
+                    {
+                        $$type: 'CalculateUnaccountedOffsetBalance',
+                        queryId: 0n,
+                        amount: stepAmount,
+                    },
+                );
+
+                expect(result.transactions).toHaveTransaction({
+                    from: owner.address,
+                    to: contract.address,
+                    success: true,
+                });
+
+                await verifyTransactions(result.transactions, owner.address);
+            }
+        }
+
+        // Process any remaining balance
+        const finalRemainingBalance = await contract.getUnaccountedOffsetBalance();
+        console.log(`${description} - Final remaining offset balance:`, finalRemainingBalance.toString());
+        
+        if (finalRemainingBalance > 0n) {
+            const result = await contract.send(
+                owner.getSender(),
+                { value: toNano('15.2') },
+                {
+                    $$type: 'CalculateUnaccountedOffsetBalance',
+                    queryId: 0n,
+                    amount: finalRemainingBalance,
+                },
+            );
+
+            expect(result.transactions).toHaveTransaction({
+                from: owner.address,
+                to: contract.address,
+                success: true,
+            });
+
+            await verifyTransactions(result.transactions, owner.address);
+        }
+    }
+}
+
 // Helper function to process unaccounted collateral balance
 async function processUnaccountedBalance(
     contract: SandboxContract<ProofOfCapital>,
@@ -257,7 +324,18 @@ describe('ProofOfCapital', () => {
         await verifyTransactions(deployResult.transactions, deployer.address);
         
         const isInitialized = await proofOfCapital.getIsInitialized();
-        expect(isInitialized).toBe(true);
+        const unaccountedOffsetBalance = await proofOfCapital.getUnaccountedOffsetBalance();
+        console.log('First test - isInitialized:', isInitialized, 'unaccountedOffsetBalance:', unaccountedOffsetBalance.toString());
+        
+        if (unaccountedOffsetBalance > 0n) {
+            // If there's unaccounted offset balance, process it
+            await processUnaccountedOffsetBalance(proofOfCapital, owner, 'First test offset', 3);
+            const finalIsInitialized = await proofOfCapital.getIsInitialized();
+            expect(finalIsInitialized).toBe(true);
+        } else {
+            // If no unaccounted offset balance, contract should be initialized
+            expect(isInitialized).toBe(true);
+        }
 
         const ownerLaunchJettonWallet = blockchain.openContract(
             await JettonWallet.fromInit(owner.address, launchJetton.address, 0n),
@@ -377,6 +455,24 @@ describe('ProofOfCapital', () => {
         });
 
         await verifyTransactions(deployNewPocResult.transactions, deployer.address);
+
+        // Check if new contract is initialized and process offset if needed
+        const newContractIsInitialized = await newPocContract.getIsInitialized();
+        const unaccountedOffsetBalance = await newPocContract.getUnaccountedOffsetBalance();
+        console.log('First test new contract - isInitialized:', newContractIsInitialized, 'unaccountedOffsetBalance:', unaccountedOffsetBalance.toString());
+        
+        if (unaccountedOffsetBalance > 0n) {
+            // If there's unaccounted offset balance, contract should not be initialized yet
+            expect(newContractIsInitialized).toBe(false);
+            // Process unaccounted offset balance
+            await processUnaccountedOffsetBalance(newPocContract, owner, 'First test new contract offset', 3);
+            // After processing, contract should be initialized
+            const finalIsInitialized = await newPocContract.getIsInitialized();
+            expect(finalIsInitialized).toBe(true);
+        } else {
+            // If no unaccounted offset balance, contract should be initialized
+            expect(newContractIsInitialized).toBe(true);
+        }
 
         const deployedOwner = await newPocContract.getOwnerAddress();
         const deployedLaunchJettonMaster = await newPocContract.getJettonMasterAddress();
@@ -546,7 +642,7 @@ describe('ProofOfCapital', () => {
         const ownerLaunchJettonWallet = blockchain.openContract(
             await JettonWallet.fromInit(marketMaker.address, supportJetton.address, 0n),
         );
-        for (let i = 0; i < 165; i++) {
+        for (let i = 0; i < 1465; i++) {
             const sendLaunchFromMarketMakerToPoc = await ownerLaunchJettonWallet.send(
                 marketMaker.getSender(),
                 { value: toNano('14.6') },
@@ -675,6 +771,22 @@ describe('ProofOfCapital', () => {
 
         await verifyTransactions(deployNewPocResult.transactions, deployer.address);
 
+        // Check if new contract is initialized
+        const newContractIsInitialized = await newPocContract.getIsInitialized();
+        const unaccountedOffsetBalance = await newPocContract.getUnaccountedOffsetBalance();
+        
+        if (unaccountedOffsetBalance > 0n) {
+            // If there's unaccounted offset balance, contract should not be initialized yet
+            expect(newContractIsInitialized).toBe(false);
+            // Process unaccounted offset balance
+            await processUnaccountedOffsetBalance(newPocContract, owner, 'Second test offset', 10);
+            // After processing, contract should be initialized
+            const finalIsInitialized = await newPocContract.getIsInitialized();
+            expect(finalIsInitialized).toBe(true);
+        } else {
+            // If no unaccounted offset balance, contract should be initialized
+            expect(newContractIsInitialized).toBe(true);
+        }
 
         const deployedOwner = await newPocContract.getOwnerAddress();
         const deployedLaunchJettonMaster = await newPocContract.getJettonMasterAddress();
@@ -806,7 +918,7 @@ describe('ProofOfCapital', () => {
         });
 
         // Process unaccounted collateral balance in 3 steps
-        await processUnaccountedBalance(newPocContract, owner, 'Second test', 10);
+        await processUnaccountedBalance(newPocContract, owner, 'Second test', 100);
        
     });
 });
