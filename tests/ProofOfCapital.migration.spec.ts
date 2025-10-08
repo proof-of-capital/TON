@@ -10,8 +10,9 @@ import {
     JettonDeferredWithdrawal,
     ConfirmJettonDeferredWithdrawal,
 } from '../build/ProofOfCapital/tact_ProofOfCapital';
-import { MyJetton, Mint } from '../build/MyJetton/tact_MyJetton';
-import { JettonDefaultWallet, TokenTransfer, loadTokenTransfer } from '../build/MyJetton/tact_JettonDefaultWallet';
+// Use standard Jetton minter and wallet instead of custom MyJetton
+import { JettonMinter, Mint } from '../build/JettonMinter/tact_JettonMinter';
+import { JettonWallet } from '../build/JettonMinter/tact_JettonWallet';
 import '@ton/test-utils';
 import { verifyTransactions } from './utils';
 
@@ -26,8 +27,8 @@ describe('ProofOfCapital', () => {
     let owner: SandboxContract<TreasuryContract>;
     let marketMaker: SandboxContract<TreasuryContract>;
     let proofOfCapital: SandboxContract<ProofOfCapital>;
-    let supportJetton: SandboxContract<MyJetton>;
-    let launchJetton: SandboxContract<MyJetton>;
+    let supportJetton: SandboxContract<JettonMinter>;
+    let launchJetton: SandboxContract<JettonMinter>;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
@@ -37,24 +38,85 @@ describe('ProofOfCapital', () => {
         marketMaker = await blockchain.treasury('marketMaker');
 
         supportJetton = blockchain.openContract(
-            await MyJetton.fromInit(
+            await JettonMinter.fromInit(
+                0n,
                 deployer.address,
-                beginCell().storeUint(0, 8).storeStringTail('Support Token').endCell(),
-                toNano('100000000000000000'),
+                beginCell().endCell(),
+                true,
             ),
         );
-
-        await supportJetton.send(deployer.getSender(), { value: toNano('0.1') }, 'Mint: 100');
 
         launchJetton = blockchain.openContract(
-            await MyJetton.fromInit(
-                deployer.address,
-                beginCell().storeUint(0, 8).storeStringTail('Launch Token').endCell(),
+            await JettonMinter.fromInit(
                 toNano('100000000000000000000'),
+                deployer.address,
+                beginCell().endCell(),
+                true,
             ),
         );
+        const transferSupportResultToOwner = await supportJetton.send(
+            deployer.getSender(),
+            { value: toNano('0.1') },
+            {
+                $$type: 'Mint',
+                queryId: 0n,
+                receiver: owner.address,
+                mintMessage: {
+                    $$type: 'JettonTransferInternal',
+                    queryId: 0n,
+                    amount: toNano('100000'),
+                    sender: deployer.address,
+                    responseDestination: null,
+                    forwardTonAmount: 0n,
+                    forwardPayload: beginCell().storeUint(0, 32).endCell().asSlice(),
+                },
+            },
+        );
 
-        await launchJetton.send(deployer.getSender(), { value: toNano('0.1') }, 'Mint: 100');
+        await verifyTransactions(transferSupportResultToOwner.transactions, deployer.address);
+
+        const transferTokenResult = await launchJetton.send(
+            deployer.getSender(),
+            { value: toNano('0.1') },
+            {
+                $$type: 'Mint',
+                queryId: 0n,
+                receiver: owner.address,
+                mintMessage: {
+                    $$type: 'JettonTransferInternal',
+                    queryId: 0n,
+                    amount: toNano('100000000000'),
+                    sender: deployer.address,
+                    responseDestination: null,
+                    forwardTonAmount: 0n,
+                    forwardPayload: beginCell().storeUint(0, 32).endCell().asSlice(),
+                },
+            },
+        );
+
+        await verifyTransactions(transferTokenResult.transactions, deployer.address);
+
+        const transferToMarketMakerResult = await supportJetton.send(
+            deployer.getSender(),
+            { value: toNano('0.1') },
+            {
+                $$type: 'Mint',
+                queryId: 0n,
+                receiver: marketMaker.address,
+                mintMessage: {
+                    $$type: 'JettonTransferInternal',
+                    queryId: 0n,
+                    amount: toNano('100000000000'),
+                    sender: deployer.address,
+                    responseDestination: null,
+                    forwardTonAmount: 0n,
+                    forwardPayload: beginCell().storeUint(0, 32).endCell().asSlice(),
+                },
+            },
+        );
+
+        await verifyTransactions(transferToMarketMakerResult.transactions, deployer.address);
+
 
         const lockEndTime = BigInt(Math.floor(Date.now() / 1000) + 86400);
         const initialPricePerToken = toNano('0.001');
@@ -100,7 +162,7 @@ describe('ProofOfCapital', () => {
         const deployResult = await proofOfCapital.send(
             deployer.getSender(),
             {
-                value: toNano('1.0'),
+                value: toNano('2.0'),
             },
             {
                 $$type: 'Deploy',
@@ -114,83 +176,61 @@ describe('ProofOfCapital', () => {
             deploy: true,
             success: true,
         });
+        expect(deployResult.transactions).toHaveTransaction({
+            from: launchJetton.address,
+            to: proofOfCapital.address,
+            success: true,
+        });
+        expect(deployResult.transactions).toHaveTransaction({
+            from: supportJetton.address,
+            to: proofOfCapital.address,
+            success: true,
+        });
 
         await verifyTransactions(deployResult.transactions, deployer.address);
+        
+        const isInitialized = await proofOfCapital.getIsInitialized();
+        expect(isInitialized).toBe(true);
 
-        const transferSupportResultToOwner = await supportJetton.send(
-            deployer.getSender(),
-            { value: toNano('0.1') },
-            {
-                $$type: 'Mint',
-                amount: toNano('100000'),
-                receiver: owner.address,
-            },
-        );
-
-        await verifyTransactions(transferSupportResultToOwner.transactions, deployer.address);
-
-        const transferTokenResult = await launchJetton.send(
-            deployer.getSender(),
-            { value: toNano('0.1') },
-            {
-                $$type: 'Mint',
-                amount: toNano('100000000000'),
-                receiver: owner.address,
-            },
-        );
-
-        await verifyTransactions(transferTokenResult.transactions, deployer.address);
-
-        const transferToMarketMakerResult = await supportJetton.send(
-            deployer.getSender(),
-            { value: toNano('0.1') },
-            {
-                $$type: 'Mint',
-                amount: toNano('100000000000'),
-                receiver: marketMaker.address,
-            },
-        );
-
-        await verifyTransactions(transferToMarketMakerResult.transactions, deployer.address);
         const ownerLaunchJettonWallet = blockchain.openContract(
-            await JettonDefaultWallet.fromInit(owner.address, launchJetton.address),
+            await JettonWallet.fromInit(owner.address, launchJetton.address, 0n),
         );
 
         const sendLaunchFromOwnerToPoc = await ownerLaunchJettonWallet.send(
             owner.getSender(),
             { value: toNano('0.5') },
             {
-                $$type: 'TokenTransfer',
-                query_id: 0n,
+                $$type: 'JettonTransfer',
+                queryId: 0n,
                 amount: toNano('10000000'),
-                recipient: proofOfCapital.address,
-                response_destination: owner.address,
-                custom_payload: null,
-                forward_ton_amount: toNano('0.4'),
-                forward_payload: beginCell().endCell().asSlice(),
+                destination: proofOfCapital.address,
+                responseDestination: owner.address,
+                customPayload: null,
+                forwardTonAmount: toNano('0.4'),
+                forwardPayload: beginCell().storeBit(false).endCell().asSlice(),
             },
         );
 
-        await verifyTransactions(sendLaunchFromOwnerToPoc.transactions, owner.address);
+        await verifyTransactions(sendLaunchFromOwnerToPoc.transactions, owner.address, proofOfCapital.address);
     });
 
     it('should migrate state from PoC A to PoC B preserving steps and offsets', async () => {
         const ownerLaunchJettonWallet = blockchain.openContract(
-            await JettonDefaultWallet.fromInit(marketMaker.address, supportJetton.address),
+            await JettonWallet.fromInit(marketMaker.address, supportJetton.address, 0n),
         );
         for (let i = 0; i < 115; i++) {
             const sendLaunchFromMarketMakerToPoc = await ownerLaunchJettonWallet.send(
                 marketMaker.getSender(),
                 { value: toNano('14.6') },
                 {
-                    $$type: 'TokenTransfer',
-                    query_id: 0n,
+                    $$type: 'JettonTransfer',
+                    queryId: 0n,
                     amount: toNano('10000000'),
-                    recipient: proofOfCapital.address,
-                    response_destination: marketMaker.address,
-                    custom_payload: null,
-                    forward_ton_amount: toNano('13.4'),
-                    forward_payload: beginCell().endCell().asSlice(),
+                    destination: proofOfCapital.address,
+                    responseDestination: marketMaker.address,
+                    customPayload: null,
+                    forwardTonAmount: toNano('13.4'),
+                    forwardPayload: beginCell().storeBit(false).endCell().asSlice(),
                 },
             );
 
@@ -435,21 +475,21 @@ describe('ProofOfCapital', () => {
 
         console.log(balance, balance2);
         const ownerLaunchJettonWallet = blockchain.openContract(
-            await JettonDefaultWallet.fromInit(marketMaker.address, supportJetton.address),
+            await JettonWallet.fromInit(marketMaker.address, supportJetton.address, 0n),
         );
         for (let i = 0; i < 115; i++) {
             const sendLaunchFromMarketMakerToPoc = await ownerLaunchJettonWallet.send(
                 marketMaker.getSender(),
                 { value: toNano('14.6') },
                 {
-                    $$type: 'TokenTransfer',
-                    query_id: 0n,
+                    $$type: 'JettonTransfer',
+                    queryId: 0n,
                     amount: toNano('10000000'),
-                    recipient: proofOfCapital.address,
-                    response_destination: marketMaker.address,
-                    custom_payload: null,
-                    forward_ton_amount: toNano('13.4'),
-                    forward_payload: beginCell().endCell().asSlice(),
+                    destination: proofOfCapital.address,
+                    responseDestination: marketMaker.address,
+                    customPayload: null,
+                    forwardTonAmount: toNano('13.4'),
+                    forwardPayload: beginCell().storeBit(false).endCell().asSlice(),
                 },
             );
 
@@ -459,14 +499,14 @@ describe('ProofOfCapital', () => {
             marketMaker.getSender(),
             { value: toNano('14.6') },
             {
-                $$type: 'TokenTransfer',
-                query_id: 0n,
+                $$type: 'JettonTransfer',
+                queryId: 0n,
                 amount: toNano('9000000'),
-                recipient: proofOfCapital.address,
-                response_destination: marketMaker.address,
-                custom_payload: null,
-                forward_ton_amount: toNano('13.4'),
-                forward_payload: beginCell().endCell().asSlice(),
+                destination: proofOfCapital.address,
+                responseDestination: marketMaker.address,
+                customPayload: null,
+                forwardTonAmount: toNano('13.4'),
+                forwardPayload: beginCell().storeBit(false).endCell().asSlice(),
             },
         );
 
@@ -474,7 +514,7 @@ describe('ProofOfCapital', () => {
         const balanceAfter = await proofOfCapital.getJettonBalance();
         const balance2After = await proofOfCapital.getCollateralTokenBalance();
         const pocLaunchJettonWallet = blockchain.openContract(
-            await JettonDefaultWallet.fromInit(proofOfCapital.address, launchJetton.address),
+            await JettonWallet.fromInit(proofOfCapital.address, launchJetton.address, 0n),
         );
 
         const dataAfter = await pocLaunchJettonWallet.getGetWalletData();
