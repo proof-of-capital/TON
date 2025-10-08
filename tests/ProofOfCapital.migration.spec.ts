@@ -10,8 +10,9 @@ import {
     JettonDeferredWithdrawal,
     ConfirmJettonDeferredWithdrawal,
 } from '../build/ProofOfCapital/tact_ProofOfCapital';
-import { MyJetton, Mint } from '../build/MyJetton/tact_MyJetton';
-import { JettonDefaultWallet, TokenTransfer, loadTokenTransfer } from '../build/MyJetton/tact_JettonDefaultWallet';
+// Use standard Jetton minter and wallet instead of custom MyJetton
+import { JettonMinter, Mint } from '../build/JettonMinter/tact_JettonMinter';
+import { JettonWallet } from '../build/JettonMinter/tact_JettonWallet';
 import '@ton/test-utils';
 import { verifyTransactions } from './utils';
 
@@ -20,14 +21,148 @@ function expectBigIntClose(received: bigint, expected: bigint, tolerance: bigint
     expect(diff <= tolerance).toBe(true);
 }
 
+// Helper function to process unaccounted offset balance
+async function processUnaccountedOffsetBalance(
+    contract: SandboxContract<ProofOfCapital>,
+    owner: SandboxContract<TreasuryContract>,
+    description: string,
+    n: number = 3
+) {
+    let unaccountedBalance = await contract.getUnaccountedOffsetBalance();
+    console.log(`${description} - Initial unaccounted offset balance:`, unaccountedBalance.toString());
+    
+    if (unaccountedBalance > 0n) {
+        // Process in n steps
+        for (let i = 1; i <= n; i++) {
+            const currentBalance = await contract.getUnaccountedOffsetBalance();
+            if (currentBalance <= 0n) break;
+            
+            // Calculate amount for this step (1/n of remaining balance)
+            const stepAmount = currentBalance / BigInt(n - i + 1);
+            // console.log(`${description} - Step ${i} amount:`, stepAmount.toString());
+            
+            if (stepAmount > 0n) {
+                const result = await contract.send(
+                    owner.getSender(),
+                    { value: toNano('15.2') },
+                    {
+                        $$type: 'CalculateUnaccountedOffsetBalance',
+                        queryId: 0n,
+                        amount: stepAmount,
+                    },
+                );
+
+                expect(result.transactions).toHaveTransaction({
+                    from: owner.address,
+                    to: contract.address,
+                    success: true,
+                });
+
+                await verifyTransactions(result.transactions, owner.address);
+            }
+        }
+
+        // Process any remaining balance
+        const finalRemainingBalance = await contract.getUnaccountedOffsetBalance();
+        console.log(`${description} - Final remaining offset balance:`, finalRemainingBalance.toString());
+        
+        if (finalRemainingBalance > 0n) {
+            const result = await contract.send(
+                owner.getSender(),
+                { value: toNano('15.2') },
+                {
+                    $$type: 'CalculateUnaccountedOffsetBalance',
+                    queryId: 0n,
+                    amount: finalRemainingBalance,
+                },
+            );
+
+            expect(result.transactions).toHaveTransaction({
+                from: owner.address,
+                to: contract.address,
+                success: true,
+            });
+
+            await verifyTransactions(result.transactions, owner.address);
+        }
+    }
+}
+
+// Helper function to process unaccounted collateral balance
+async function processUnaccountedBalance(
+    contract: SandboxContract<ProofOfCapital>,
+    owner: SandboxContract<TreasuryContract>,
+    description: string,
+    n: number = 3
+) {
+    let unaccountedBalance = await contract.getUnaccountedCollateralBalance();
+    console.log(`${description} - Initial unaccounted balance:`, unaccountedBalance.toString());
+    
+    if (unaccountedBalance > 0n) {
+        // Process in n steps
+        for (let i = 1; i <= n; i++) {
+            const currentBalance = await contract.getUnaccountedCollateralBalance();
+            if (currentBalance <= 0n) break;
+            
+            // Calculate amount for this step (1/n of remaining balance)
+            const stepAmount = currentBalance / BigInt(n - i + 1);
+            // console.log(`${description} - Step ${i} amount:`, stepAmount.toString());
+            
+            if (stepAmount > 0n) {
+                const result = await contract.send(
+                    owner.getSender(),
+                    { value: toNano('15.2') },
+                    {
+                        $$type: 'CalculateUnaccountedCollateralBalance',
+                        queryId: 0n,
+                        amount: stepAmount,
+                    },
+                );
+
+                expect(result.transactions).toHaveTransaction({
+                    from: owner.address,
+                    to: contract.address,
+                    success: true,
+                });
+
+                await verifyTransactions(result.transactions, owner.address);
+            }
+        }
+
+        // Process any remaining balance
+        const finalRemainingBalance = await contract.getUnaccountedCollateralBalance();
+        console.log(`${description} - Final remaining balance:`, finalRemainingBalance.toString());
+        
+        if (finalRemainingBalance > 0n) {
+            const result = await contract.send(
+                owner.getSender(),
+                { value: toNano('15.2') },
+                {
+                    $$type: 'CalculateUnaccountedCollateralBalance',
+                    queryId: 0n,
+                    amount: finalRemainingBalance,
+                },
+            );
+
+            expect(result.transactions).toHaveTransaction({
+                from: owner.address,
+                to: contract.address,
+                success: true,
+            });
+
+            await verifyTransactions(result.transactions, owner.address);
+        }
+    }
+}
+
 describe('ProofOfCapital', () => {
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
     let owner: SandboxContract<TreasuryContract>;
     let marketMaker: SandboxContract<TreasuryContract>;
     let proofOfCapital: SandboxContract<ProofOfCapital>;
-    let supportJetton: SandboxContract<MyJetton>;
-    let launchJetton: SandboxContract<MyJetton>;
+    let supportJetton: SandboxContract<JettonMinter>;
+    let launchJetton: SandboxContract<JettonMinter>;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
@@ -37,24 +172,85 @@ describe('ProofOfCapital', () => {
         marketMaker = await blockchain.treasury('marketMaker');
 
         supportJetton = blockchain.openContract(
-            await MyJetton.fromInit(
+            await JettonMinter.fromInit(
+                0n,
                 deployer.address,
-                beginCell().storeUint(0, 8).storeStringTail('Support Token').endCell(),
-                toNano('100000000000000000'),
+                beginCell().endCell(),
+                true,
             ),
         );
-
-        await supportJetton.send(deployer.getSender(), { value: toNano('0.1') }, 'Mint: 100');
 
         launchJetton = blockchain.openContract(
-            await MyJetton.fromInit(
-                deployer.address,
-                beginCell().storeUint(0, 8).storeStringTail('Launch Token').endCell(),
+            await JettonMinter.fromInit(
                 toNano('100000000000000000000'),
+                deployer.address,
+                beginCell().endCell(),
+                true,
             ),
         );
+        const transferSupportResultToOwner = await supportJetton.send(
+            deployer.getSender(),
+            { value: toNano('0.1') },
+            {
+                $$type: 'Mint',
+                queryId: 0n,
+                receiver: owner.address,
+                mintMessage: {
+                    $$type: 'JettonTransferInternal',
+                    queryId: 0n,
+                    amount: toNano('100000'),
+                    sender: deployer.address,
+                    responseDestination: null,
+                    forwardTonAmount: 0n,
+                    forwardPayload: beginCell().storeUint(0, 32).endCell().asSlice(),
+                },
+            },
+        );
 
-        await launchJetton.send(deployer.getSender(), { value: toNano('0.1') }, 'Mint: 100');
+        await verifyTransactions(transferSupportResultToOwner.transactions, deployer.address);
+
+        const transferTokenResult = await launchJetton.send(
+            deployer.getSender(),
+            { value: toNano('0.1') },
+            {
+                $$type: 'Mint',
+                queryId: 0n,
+                receiver: owner.address,
+                mintMessage: {
+                    $$type: 'JettonTransferInternal',
+                    queryId: 0n,
+                    amount: toNano('100000000000'),
+                    sender: deployer.address,
+                    responseDestination: null,
+                    forwardTonAmount: 0n,
+                    forwardPayload: beginCell().storeUint(0, 32).endCell().asSlice(),
+                },
+            },
+        );
+
+        await verifyTransactions(transferTokenResult.transactions, deployer.address);
+
+        const transferToMarketMakerResult = await supportJetton.send(
+            deployer.getSender(),
+            { value: toNano('0.1') },
+            {
+                $$type: 'Mint',
+                queryId: 0n,
+                receiver: marketMaker.address,
+                mintMessage: {
+                    $$type: 'JettonTransferInternal',
+                    queryId: 0n,
+                    amount: toNano('100000000000'),
+                    sender: deployer.address,
+                    responseDestination: null,
+                    forwardTonAmount: 0n,
+                    forwardPayload: beginCell().storeUint(0, 32).endCell().asSlice(),
+                },
+            },
+        );
+
+        await verifyTransactions(transferToMarketMakerResult.transactions, deployer.address);
+
 
         const lockEndTime = BigInt(Math.floor(Date.now() / 1000) + 86400);
         const initialPricePerToken = toNano('0.001');
@@ -100,7 +296,7 @@ describe('ProofOfCapital', () => {
         const deployResult = await proofOfCapital.send(
             deployer.getSender(),
             {
-                value: toNano('1.0'),
+                value: toNano('2.0'),
             },
             {
                 $$type: 'Deploy',
@@ -114,83 +310,72 @@ describe('ProofOfCapital', () => {
             deploy: true,
             success: true,
         });
+        expect(deployResult.transactions).toHaveTransaction({
+            from: launchJetton.address,
+            to: proofOfCapital.address,
+            success: true,
+        });
+        expect(deployResult.transactions).toHaveTransaction({
+            from: supportJetton.address,
+            to: proofOfCapital.address,
+            success: true,
+        });
 
         await verifyTransactions(deployResult.transactions, deployer.address);
+        
+        const isInitialized = await proofOfCapital.getIsInitialized();
+        const unaccountedOffsetBalance = await proofOfCapital.getUnaccountedOffsetBalance();
+        console.log('First test - isInitialized:', isInitialized, 'unaccountedOffsetBalance:', unaccountedOffsetBalance.toString());
+        
+        if (unaccountedOffsetBalance > 0n) {
+            // If there's unaccounted offset balance, process it
+            await processUnaccountedOffsetBalance(proofOfCapital, owner, 'First test offset', 3);
+            const finalIsInitialized = await proofOfCapital.getIsInitialized();
+            expect(finalIsInitialized).toBe(true);
+        } else {
+            // If no unaccounted offset balance, contract should be initialized
+            expect(isInitialized).toBe(true);
+        }
 
-        const transferSupportResultToOwner = await supportJetton.send(
-            deployer.getSender(),
-            { value: toNano('0.1') },
-            {
-                $$type: 'Mint',
-                amount: toNano('100000'),
-                receiver: owner.address,
-            },
-        );
-
-        await verifyTransactions(transferSupportResultToOwner.transactions, deployer.address);
-
-        const transferTokenResult = await launchJetton.send(
-            deployer.getSender(),
-            { value: toNano('0.1') },
-            {
-                $$type: 'Mint',
-                amount: toNano('100000000000'),
-                receiver: owner.address,
-            },
-        );
-
-        await verifyTransactions(transferTokenResult.transactions, deployer.address);
-
-        const transferToMarketMakerResult = await supportJetton.send(
-            deployer.getSender(),
-            { value: toNano('0.1') },
-            {
-                $$type: 'Mint',
-                amount: toNano('100000000000'),
-                receiver: marketMaker.address,
-            },
-        );
-
-        await verifyTransactions(transferToMarketMakerResult.transactions, deployer.address);
         const ownerLaunchJettonWallet = blockchain.openContract(
-            await JettonDefaultWallet.fromInit(owner.address, launchJetton.address),
+            await JettonWallet.fromInit(owner.address, launchJetton.address, 0n),
         );
 
         const sendLaunchFromOwnerToPoc = await ownerLaunchJettonWallet.send(
             owner.getSender(),
             { value: toNano('0.5') },
             {
-                $$type: 'TokenTransfer',
-                query_id: 0n,
+                $$type: 'JettonTransfer',
+                queryId: 0n,
                 amount: toNano('10000000'),
-                recipient: proofOfCapital.address,
-                response_destination: owner.address,
-                custom_payload: null,
-                forward_ton_amount: toNano('0.4'),
-                forward_payload: beginCell().endCell().asSlice(),
+                destination: proofOfCapital.address,
+                responseDestination: owner.address,
+                customPayload: null,
+                forwardTonAmount: toNano('0.4'),
+                forwardPayload: beginCell().storeBit(false).endCell().asSlice(),
             },
         );
 
-        await verifyTransactions(sendLaunchFromOwnerToPoc.transactions, owner.address);
+        await verifyTransactions(sendLaunchFromOwnerToPoc.transactions, owner.address, proofOfCapital.address);
     });
 
     it('should migrate state from PoC A to PoC B preserving steps and offsets', async () => {
         const ownerLaunchJettonWallet = blockchain.openContract(
-            await JettonDefaultWallet.fromInit(marketMaker.address, supportJetton.address),
+            await JettonWallet.fromInit(marketMaker.address, supportJetton.address, 0n),
         );
         for (let i = 0; i < 115; i++) {
             const sendLaunchFromMarketMakerToPoc = await ownerLaunchJettonWallet.send(
                 marketMaker.getSender(),
                 { value: toNano('14.6') },
                 {
-                    $$type: 'TokenTransfer',
-                    query_id: 0n,
+                    $$type: 'JettonTransfer',
+                    queryId: 0n,
                     amount: toNano('10000000'),
-                    recipient: proofOfCapital.address,
-                    response_destination: marketMaker.address,
-                    custom_payload: null,
-                    forward_ton_amount: toNano('13.4'),
-                    forward_payload: beginCell().endCell().asSlice(),
+                    destination: proofOfCapital.address,
+                    responseDestination: marketMaker.address,
+                    customPayload: null,
+                    forwardTonAmount: toNano('13.4'),
+                    forwardPayload: beginCell().storeBit(false).endCell().asSlice(),
                 },
             );
 
@@ -270,6 +455,24 @@ describe('ProofOfCapital', () => {
         });
 
         await verifyTransactions(deployNewPocResult.transactions, deployer.address);
+
+        // Check if new contract is initialized and process offset if needed
+        const newContractIsInitialized = await newPocContract.getIsInitialized();
+        const unaccountedOffsetBalance = await newPocContract.getUnaccountedOffsetBalance();
+        console.log('First test new contract - isInitialized:', newContractIsInitialized, 'unaccountedOffsetBalance:', unaccountedOffsetBalance.toString());
+        
+        if (unaccountedOffsetBalance > 0n) {
+            // If there's unaccounted offset balance, contract should not be initialized yet
+            expect(newContractIsInitialized).toBe(false);
+            // Process unaccounted offset balance
+            await processUnaccountedOffsetBalance(newPocContract, owner, 'First test new contract offset', 3);
+            // After processing, contract should be initialized
+            const finalIsInitialized = await newPocContract.getIsInitialized();
+            expect(finalIsInitialized).toBe(true);
+        } else {
+            // If no unaccounted offset balance, contract should be initialized
+            expect(newContractIsInitialized).toBe(true);
+        }
 
         const deployedOwner = await newPocContract.getOwnerAddress();
         const deployedLaunchJettonMaster = await newPocContract.getJettonMasterAddress();
@@ -382,6 +585,8 @@ describe('ProofOfCapital', () => {
         await verifyTransactions(confirmLaunchWithdrawalResult.transactions, owner.address, proofOfCapital.address);
         await verifyTransactions(confirmCollateralWithdrawalResult.transactions, owner.address);
 
+        // Process unaccounted collateral balance in 3 steps
+        await processUnaccountedBalance(newPocContract, owner, 'First test', 3);
         const newPocContractCollateralBalance = await newPocContract.getCollateralTokenBalance();
         const newPocContractJettonBalance = await newPocContract.getJettonBalance();
 
@@ -435,21 +640,21 @@ describe('ProofOfCapital', () => {
 
         console.log(balance, balance2);
         const ownerLaunchJettonWallet = blockchain.openContract(
-            await JettonDefaultWallet.fromInit(marketMaker.address, supportJetton.address),
+            await JettonWallet.fromInit(marketMaker.address, supportJetton.address, 0n),
         );
-        for (let i = 0; i < 115; i++) {
+        for (let i = 0; i < 1465; i++) {
             const sendLaunchFromMarketMakerToPoc = await ownerLaunchJettonWallet.send(
                 marketMaker.getSender(),
                 { value: toNano('14.6') },
                 {
-                    $$type: 'TokenTransfer',
-                    query_id: 0n,
+                    $$type: 'JettonTransfer',
+                    queryId: 0n,
                     amount: toNano('10000000'),
-                    recipient: proofOfCapital.address,
-                    response_destination: marketMaker.address,
-                    custom_payload: null,
-                    forward_ton_amount: toNano('13.4'),
-                    forward_payload: beginCell().endCell().asSlice(),
+                    destination: proofOfCapital.address,
+                    responseDestination: marketMaker.address,
+                    customPayload: null,
+                    forwardTonAmount: toNano('13.4'),
+                    forwardPayload: beginCell().storeBit(false).endCell().asSlice(),
                 },
             );
 
@@ -459,14 +664,14 @@ describe('ProofOfCapital', () => {
             marketMaker.getSender(),
             { value: toNano('14.6') },
             {
-                $$type: 'TokenTransfer',
-                query_id: 0n,
+                $$type: 'JettonTransfer',
+                queryId: 0n,
                 amount: toNano('9000000'),
-                recipient: proofOfCapital.address,
-                response_destination: marketMaker.address,
-                custom_payload: null,
-                forward_ton_amount: toNano('13.4'),
-                forward_payload: beginCell().endCell().asSlice(),
+                destination: proofOfCapital.address,
+                responseDestination: marketMaker.address,
+                customPayload: null,
+                forwardTonAmount: toNano('13.4'),
+                forwardPayload: beginCell().storeBit(false).endCell().asSlice(),
             },
         );
 
@@ -474,7 +679,7 @@ describe('ProofOfCapital', () => {
         const balanceAfter = await proofOfCapital.getJettonBalance();
         const balance2After = await proofOfCapital.getCollateralTokenBalance();
         const pocLaunchJettonWallet = blockchain.openContract(
-            await JettonDefaultWallet.fromInit(proofOfCapital.address, launchJetton.address),
+            await JettonWallet.fromInit(proofOfCapital.address, launchJetton.address, 0n),
         );
 
         const dataAfter = await pocLaunchJettonWallet.getGetWalletData();
@@ -538,7 +743,7 @@ describe('ProofOfCapital', () => {
         const deployNewPocResult = await newPocContract.send(
             deployer.getSender(),
             {
-                value: toNano('1'),
+                value: toNano('10'),
             },
             {
                 $$type: 'Deploy',
@@ -553,8 +758,35 @@ describe('ProofOfCapital', () => {
             success: true,
         });
 
+        expect(deployNewPocResult.transactions).toHaveTransaction({
+            from: launchJetton.address,
+            to: newPocContract.address,
+            success: true,  
+        });
+        expect(deployNewPocResult.transactions).toHaveTransaction({
+            from: supportJetton.address,
+            to: newPocContract.address,
+            success: true,
+        });
+
         await verifyTransactions(deployNewPocResult.transactions, deployer.address);
 
+        // Check if new contract is initialized
+        const newContractIsInitialized = await newPocContract.getIsInitialized();
+        const unaccountedOffsetBalance = await newPocContract.getUnaccountedOffsetBalance();
+        
+        if (unaccountedOffsetBalance > 0n) {
+            // If there's unaccounted offset balance, contract should not be initialized yet
+            expect(newContractIsInitialized).toBe(false);
+            // Process unaccounted offset balance
+            await processUnaccountedOffsetBalance(newPocContract, owner, 'Second test offset', 10);
+            // After processing, contract should be initialized
+            const finalIsInitialized = await newPocContract.getIsInitialized();
+            expect(finalIsInitialized).toBe(true);
+        } else {
+            // If no unaccounted offset balance, contract should be initialized
+            expect(newContractIsInitialized).toBe(true);
+        }
 
         const deployedOwner = await newPocContract.getOwnerAddress();
         const deployedLaunchJettonMaster = await newPocContract.getJettonMasterAddress();
@@ -682,8 +914,11 @@ describe('ProofOfCapital', () => {
         await verifyTransactions(confirmLaunchWithdrawalResult.transactions, owner.address, proofOfCapital.address);
         expect(confirmCollateralWithdrawalResult.transactions).toHaveTransaction({
             to: newPocContract.address,
-            success: false,
-            exitCode: -14,
+            success: true,
         });
+
+        // Process unaccounted collateral balance in 3 steps
+        await processUnaccountedBalance(newPocContract, owner, 'Second test', 100);
+       
     });
 });
