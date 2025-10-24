@@ -1,10 +1,28 @@
 {
     "projects": [
-        {
-            "name": "ProofOfCapital",
-            "path": "contracts/proof_of_capital.tact",
-            "output": "/tmp/tact-output",
-            "options": { "debug": true }
+      {
+        "name": "Jetton",
+        "path": "contracts/jetton/base/jetton-minter.tact",
+        "output": "/tmp/tact-output",
+        "mode": "full",
+        "options": {
+          "external": false,
+          "debug": false,
+          "ipfsAbiGetter": false,
+          "interfacesGetter": false,
+          "experimental": {
+            "inline": true
+          }
         }
+      },
+      {
+        "name": "ProofOfCapital",
+        "path": "contracts/proof_of_capital.tact",
+        "output": "/tmp/tact-output",
+        "options": {
+          "debug": true
+        }
+      }
     ]
-}
+ }
+
