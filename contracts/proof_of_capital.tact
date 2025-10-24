@@ -134,6 +134,8 @@ contract ProofOfCapital with Deployable, Ownable {
     recipientDeferredWithdrawalCollateralJetton: Address; // Recipient address for the deferred withdrawal of the collateral jetton
     jettonDecimals: Int as uint32; // Number of decimals for the jetton
     farm: Address; // Farm address
+    unaccountedCollateralBalance: Int as coins = 0; // Unaccounted collateral balance
+    unaccountedOffsetBalance: Int as coins = 0; // Unaccounted offset balance
 
     isInitialized: Bool = false; // Flag indicating whether the contract's jetton wallets are initialized (required to run self.calculateOffset())
 
@@ -247,7 +249,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Receives and sends messages to jetton master contracts, stores the addresses of the launch and collateral jetton wallets.
     // Change flag isInitialized after all jetton wallets received.
-    // Triggers the offset calculation function.
+    // Sets unaccounted offset balance instead of immediately calculating offset.
     receive(msg: TakeWalletAddress) {
         require(sender() == self.launchJettonMasterAddress || sender() == self.jettonCollateralMasterAddress, "Invalid lounch or collateral jetton master sender");
         require(!self.isInitialized, "Contract jetton wallets are already initialized");
@@ -261,15 +263,21 @@ contract ProofOfCapital with Deployable, Ownable {
                     body: ProvideWalletAddress{query_id: now(), owner_address: myAddress(), include_address: true}.toCell()
                 });
             } else {
-                self.calculateOffset(self.offsetJettons);
-                self.isInitialized = true;
+                if (self.offsetJettons > 0) {
+                    self.unaccountedOffsetBalance = self.offsetJettons;
+                } else {
+                    self.isInitialized = true;
+                }
             }
         } else {
             self.contractJettonCollateralWalletAddress = msg.wallet_address;
         }
         if (self.contractLaunchJettonWalletAddress != self.owner && self.contractJettonCollateralWalletAddress != self.owner) {
-            self.calculateOffset(self.offsetJettons);
-            self.isInitialized = true;
+            if (self.offsetJettons > 0) {
+                self.unaccountedOffsetBalance = self.offsetJettons;
+            } else {
+                self.isInitialized = true;
+            }
         }
     }
 
@@ -603,19 +611,20 @@ contract ProofOfCapital with Deployable, Ownable {
             require(value >= self.commission, "Insufficient funds to cover commission");
             if (sender() == self.owner || sender() == self.oldContractAddress) {
                 if (self.offsetJettons - self.jettonsEarned > 0)
-                {
-                    let deltaCollateralBalance = self.calculateChangeOffsetCollateral(value);
-                    self.contractCollateralBalance += deltaCollateralBalance;
-                    let change = value - deltaCollateralBalance;
-                    if (change > 0) {
-                        message(MessageParameters{
-                            to: self.owner,
-                            value: change,
-                            bounce: true,
-                            mode: SendPayFwdFeesSeparately,
-                            body: "Send change to the owner".asComment()
-                        });
-                    }
+                {   
+                    self.unaccountedCollateralBalance += value;
+                    // let deltaCollateralBalance = self.calculateChangeOffsetCollateral(value);
+                    // self.contractCollateralBalance += deltaCollateralBalance;
+                    // let change = value - deltaCollateralBalance;
+                    // if (change > 0) {
+                    //     message(MessageParameters{
+                    //         to: self.owner,
+                    //         value: change,
+                    //         bounce: true,
+                    //         mode: SendPayFwdFeesSeparately,
+                    //         body: "Send change to the owner".asComment()
+                    //     });
+                    // }
                 }
             } else {
                 require(self.isActive, "Contract is not active");
@@ -720,12 +729,13 @@ contract ProofOfCapital with Deployable, Ownable {
                 }
                 if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
                     if (self.offsetJettons - self.jettonsEarned > 0) {
-                        let deltaCollateralBalance = self.calculateChangeOffsetCollateral(msg.amount);
-                        self.contractCollateralBalance += deltaCollateralBalance;
-                        let change = msg.amount - deltaCollateralBalance;
-                        if (change > 0) {
-                            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, change, SendChangeToOwner{}.toCell(), self.commission * 2, self.commission);
-                        }
+                        self.unaccountedCollateralBalance += msg.amount;
+                        // let deltaCollateralBalance = self.calculateChangeOffsetCollateral(msg.amount);
+                        // self.contractCollateralBalance += deltaCollateralBalance;
+                        // let change = msg.amount - deltaCollateralBalance;
+                        // if (change > 0) {
+                        //     self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, change, SendChangeToOwner{}.toCell(), self.commission * 2, self.commission);
+                        // }
                     } else {
                         self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, value, SendBackToOwner{}.toCell(), self.commission * 2, self.commission);
                     }
@@ -868,6 +878,52 @@ contract ProofOfCapital with Deployable, Ownable {
             }
         }
     }
+
+
+    receive(msg: CalculateUnaccountedCollateralBalance) {
+        require(sender() == self.owner, "Access is only for the owner");
+        require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted collateral balance");
+        require(self.unaccountedCollateralBalance >= msg.amount, "Insufficient unaccounted collateral balance");
+        self.unaccountedCollateralBalance -= msg.amount;
+        let deltaCollateralBalance = self.calculateChangeOffsetCollateral(msg.amount);
+        self.contractCollateralBalance += deltaCollateralBalance;
+        let change = msg.amount - deltaCollateralBalance;
+        if (change > 0) {
+            if (self.jettonCollateral) {
+                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, change, SendChangeToOwner{}.toCell(), self.commission * 2, self.commission);
+            } else {
+                message(MessageParameters{
+                    to: self.owner,
+                    value: change,
+                    bounce: true,
+                    mode: SendPayFwdFeesSeparately,
+                    body: "Send change to the owner".asComment()
+                });
+            }
+        }
+    }
+
+    // Calculates unaccounted offset balance in parts
+    receive(msg: CalculateUnaccountedOffsetBalance) {
+        require(sender() == self.owner, "Access is only for the owner");
+        require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset balance");
+        
+        // Check that TakeWalletAddress has fully completed and set unaccountedOffsetBalance
+        require(self.contractLaunchJettonWalletAddress != self.owner, "Launch jetton wallet not initialized");
+        require(!self.jettonCollateral || self.contractJettonCollateralWalletAddress != self.owner, "Collateral jetton wallet not initialized");
+        require(self.unaccountedOffsetBalance > 0, "Unaccounted offset balance not set - TakeWalletAddress not completed");
+        require(!self.isInitialized, "Contract already initialized - offset calculation completed");
+        
+        require(self.unaccountedOffsetBalance >= msg.amount, "Insufficient unaccounted offset balance");
+        self.unaccountedOffsetBalance -= msg.amount;
+        self.calculateOffset(msg.amount);
+        
+        // Check if all offset has been processed
+        if (self.unaccountedOffsetBalance == 0) {
+            self.isInitialized = true;
+        }
+    }   
+        
 
     // You can use DAO for launch and manage your contract. Reed more aboutt this on https://tokens.family
     receive(msg: SetFarm) {
@@ -1805,6 +1861,14 @@ contract ProofOfCapital with Deployable, Ownable {
         contractState.append("|CSB:");
         contractState.append(self.contractCollateralBalance.toCoinsString());
         return contractState.toString();
+    }
+    
+    get fun unaccounted_collateral_balance(): Int {
+        return self.unaccountedCollateralBalance;
+    }
+
+    get fun unaccounted_offset_balance(): Int {
+        return self.unaccountedOffsetBalance;
     }
 
     get fun standard_contract_state_collateral_values(): String {
