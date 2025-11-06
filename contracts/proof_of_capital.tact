@@ -33,7 +33,7 @@ const THIRTY_DAYS: Int = 2_592_000; // 30 days before the deferred withdrawal da
 const SIXTY_DAYS: Int = 5_184_000; // Starting 60 days before the lock-up ends, any token holders can interact with the contract.
 const THREE_MONTHS: Int = 7_776_000; // 3 months (used for lock extension)
 const HALF_YEAR: Int = 15_768_000; // half a year (used for lock extension)
-const TWO_YEARS: Int = 63_072_000; // 2 years (used as the maximum lock extension period)
+const FIVE_YEARS: Int = 157_680_000; // 5 years (used as the maximum lock extension period)
 const FIVE_HUNDREDTHS_TON: Int = ton("0.05"); // minimum TON amount for covering fees
 const COMMISSION_MULTIPLIER: Int = 10; // commission multiplier (used to calculate the remaining contract balance when withdrawing TON equal to 10 times the fee)
 
@@ -285,7 +285,7 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: ExtendLock) {
         require(sender() == self.owner, "Access is only for the owner");
         require(context().value >= self.commission, "Amount must be greater than commission");
-        require(((self.lockEndTime + msg.additionalTime) - now()) < TWO_YEARS, "Lock end time cannot exceed two years");
+        require(((self.lockEndTime + msg.additionalTime) - now()) < FIVE_YEARS, "Lock end time cannot exceed five years");
         require(msg.additionalTime == HALF_YEAR || msg.additionalTime == TEN_MINUTES || msg.additionalTime == THREE_MONTHS, "Invalid time!");
         self.lockEndTime += msg.additionalTime;
         if (msg.additionalTime == HALF_YEAR) {
@@ -1945,7 +1945,7 @@ contract ProofOfCapital with Deployable, Ownable {
     get fun contract_constant_values(): String {
         let contractState: StringBuilder = beginString();
         contractState.append("TYC:");
-        contractState.append(TWO_YEARS.toString());
+        contractState.append(FIVE_YEARS.toString());
         contractState.append("|HYC:");
         contractState.append(HALF_YEAR.toString());
         contractState.append("|TMC:");
