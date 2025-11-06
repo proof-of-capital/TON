@@ -102,7 +102,7 @@ contract ProofOfCapital with Deployable, Ownable {
     remainderOffsetJettons: Int as coins; // Remaining jettons at the current offset step
     sizeOffsetStep: Int as coins; // Current size of the offset step
 
-    callJettonsID: Int as uint8; // Call counter for the initial deposit (1 – first deposit, 0 – all subsequent ones)
+    isFirstPurchase: Bool; // Flag indicating if this is the first purchase (true – first deposit, false – all subsequent ones)
 
     // New collateral
     jettonCollateral: Bool; // Jetton collateral flag. If False — collateral is provided in TON.
@@ -208,7 +208,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.remainderOffsetJettons = firstLevelJettonQuantity;
         self.sizeOffsetStep = firstLevelJettonQuantity;
         self.controlPeriod = getPeriod(controlPeriod);
-        self.callJettonsID = 1;
+        self.isFirstPurchase = true;
 
         self.reserveOwner = owner;
 
@@ -777,9 +777,9 @@ contract ProofOfCapital with Deployable, Ownable {
             try {
                 require(sender() == self.contractLaunchJettonWalletAddress, "Notification not from your jetton wallet!");
                 if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
-                    if (self.callJettonsID == 1) {
+                    if (self.isFirstPurchase) {
                         self.contractJettonBalance += msg.amount;
-                        self.callJettonsID = 0;
+                        self.isFirstPurchase = false;
                     } else {
                         if (self.totalJettonsSold == self.offsetJettons && (self.offsetJettons - self.jettonsEarned) >= msg.amount) {
                             
@@ -1750,8 +1750,8 @@ contract ProofOfCapital with Deployable, Ownable {
         return self.sizeOffsetStep;
     }
 
-    get fun call_jetton_notification_ID(): Int {
-        return self.callJettonsID;
+    get fun call_jetton_notification_ID(): Bool {
+        return self.isFirstPurchase;
     }
 
     get fun calculate_change_offset_collateral(a: Int): Int {
@@ -1923,7 +1923,11 @@ contract ProofOfCapital with Deployable, Ownable {
         contractState.append("|SOS:");
         contractState.append(self.sizeOffsetStep.toCoinsString());
         contractState.append("|CJID:");
-        contractState.append(self.callJettonsID.toString());
+        if (self.isFirstPurchase) {
+            contractState.append("1");
+        } else {
+            contractState.append("0");
+        }
         return contractState.toString();
     }
 
