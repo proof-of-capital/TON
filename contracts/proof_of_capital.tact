@@ -121,7 +121,7 @@ contract ProofOfCapital with Deployable, Ownable {
     profitInTime: Bool; // Flag indicating whether profit is withdrawn immediately or upon request (true – on request, false – immediately)
     royaltyProfitPercent: Int as uint16; // Royalty profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
     creatorProfitPercent: Int as uint16; // Owner profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
-    coefficientProfit: Int as uint16; // Coefficient for calculating the profit percentage (from 1 (100 %) to MAX_PERCENT (10000 %))
+    profitBeforeTrendChange: Int as uint16; // Profit percentage before trend change (from 1 (0.1 %) to MAX_PERCENT (100 %))
 
     canWithdrawal: Bool = true; // Flag indicating whether early delayed withdrawal is allowed (true – allowed, false – prohibited)
 
@@ -158,7 +158,7 @@ contract ProofOfCapital with Deployable, Ownable {
         jettonCollateral: Bool,
         jettonCollateralMasterAddress: Address,
         royaltyProfitPercent: Int,
-        coefficientProfit: Int,
+        profitBeforeTrendChange: Int,
         jettonDecimals: Int
         ) {
         self.oldContractAddress = owner;
@@ -179,7 +179,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.trendChangeStep = trendChangeStep;
         self.levelDecreaseMultiplierafterTrend = levelDecreaseMultiplierafterTrend;
         self.profitPercentage = profitPercentage;
-        self.coefficientProfit = coefficientProfit;
+        self.profitBeforeTrendChange = profitBeforeTrendChange;
         self.jettonCollateral = jettonCollateral;
         self.jettonCollateralMasterAddress = jettonCollateralMasterAddress;
         self.contractJettonCollateralWalletAddress = owner;
@@ -1119,7 +1119,7 @@ contract ProofOfCapital with Deployable, Ownable {
         if (currentStep > self.trendChangeStep) {
             return self.profitPercentage;
         } else {
-            return self.profitPercentage * self.coefficientProfit / MAX_PERCENT;
+            return self.profitBeforeTrendChange;
         }
     }
 
