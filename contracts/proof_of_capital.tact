@@ -52,7 +52,7 @@ fun getPeriod(period: Int): Int {
 contract ProofOfCapital with Deployable, Ownable {
     isActive: Bool = true; // Contract activity flag
     oldContractAddress: Address; // Address of the old contract, from which coins are expected to be transferred to the current contract (messages are treated as if sent by the owner)
-    oldContractAddressesMap: map<Address, Int as uint8>; // Map of old contracts addresses
+    oldContractAddressesMap: map<Address, Bool>; // Map of old contracts addresses
     oldContractAddressesLength: Int as uint8; // Number of old contracts in the map
 
     id: Int as uint256; // Unique contract identifier, passed during deployment and used to initialize the contract address when choosing a special address (default is 0)
@@ -110,7 +110,7 @@ contract ProofOfCapital with Deployable, Ownable {
     contractJettonCollateralWalletAddress: Address; // Contract's collateral jetton wallet address
 
     // Storage of additional market maker addresses
-    marketMakerAddressesMap: map<Address, Int as uint8>; // Map of market maker addresses
+    marketMakerAddressesMap: map<Address, Bool>; // Map of market maker addresses
     marketMakerAddressesLength: Int as uint8; // Number of market makers in the map
 
     // Profit withdrawal
@@ -214,7 +214,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
         self.marketMakerAddressesMap = emptyMap();
         self.marketMakerAddressesLength = 1;
-        self.marketMakerAddressesMap.set(marketMakerAddress, self.marketMakerAddressesLength);
+        self.marketMakerAddressesMap.set(marketMakerAddress, true);
 
         self.ownerTonBalance = 0;
         self.royaltyTonBalance = 0;
@@ -528,7 +528,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require((!self.oldContractAddressesMap.exists(msg.newMarketMakerAddresse)), "Old contract address cannot be equal to any of addresses in contract");
         if (!self.marketMakerAddressesMap.exists(msg.newMarketMakerAddresse)) {
             self.marketMakerAddressesLength += 1;
-            self.marketMakerAddressesMap.set(msg.newMarketMakerAddresse, self.marketMakerAddressesLength);
+            self.marketMakerAddressesMap.set(msg.newMarketMakerAddresse, true);
         } else {
             self.notify("Market maker address already exists".asComment());
         }
@@ -572,7 +572,7 @@ contract ProofOfCapital with Deployable, Ownable {
         if (!self.oldContractAddressesMap.exists(msg.oldContractAddress)) {
             require(self.oldContractAddressesLength < 256, "Too much old contracts");
             self.oldContractAddressesLength += 1;
-            self.oldContractAddressesMap.set(msg.oldContractAddress, self.oldContractAddressesLength);
+            self.oldContractAddressesMap.set(msg.oldContractAddress, true);
         }
     }
 
@@ -1623,13 +1623,7 @@ contract ProofOfCapital with Deployable, Ownable {
         if (!self.marketMakerAddressesMap.exists(address)) {
             return "not found";
         } else {
-            let addr: String = address.toString();
-            let id: Int = self.marketMakerAddressesMap.get(address)!!;
-            let output: StringBuilder = beginString();
-            output.append(addr);
-            output.append(" - ");
-            output.append(id.toString());
-            return output.toString();
+            return address.toString();
         }
     }
 
