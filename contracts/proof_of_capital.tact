@@ -133,7 +133,7 @@ contract ProofOfCapital with Deployable, Ownable {
     collateralJettonDeferredWithdrawalDate: Int as uint64 = 0; // End date of the waiting period for delayed withdrawal of the collateral token
     recipientDeferredWithdrawalCollateralJetton: Address; // Recipient address for the deferred withdrawal of the collateral jetton
     jettonDecimals: Int as uint32; // Number of decimals for the jetton
-    farm: Address; // Farm address
+    dao: Address; // DAO address
     unaccountedCollateralBalance: Int as coins = 0; // Unaccounted collateral balance
     unaccountedOffsetBalance: Int as coins = 0; // Unaccounted offset balance
 
@@ -228,7 +228,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.recipientDeferredWithdrawalLaunchJetton = owner;
         self.recipientDeferredWithdrawalCollateralJetton = owner;
 
-        self.farm = owner;
+        self.dao = owner;
 
         require(self.initialPricePerToken > 0, "Initial price must be positive");
         require(self.levelDecreaseMultiplierafterTrend < MAX_PERCENT, "Multiplier too high");
@@ -349,7 +349,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Cancels the delayed withdrawal of the launch jetton and resets the associated data. It can be used by both the creator and the royalty wallet.
     receive(msg: StopJettonDeferredWithdrawal) {
-        require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.farm, "Access is only for the owner or royaltyWallet or farm");
+        require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.dao, "Access is only for the owner or royaltyWallet or dao");
         require(self.launchJettonDeferredWithdrawalDate != 0, "Launch jetton deferred withdrawal date is not set");
         self.launchJettonDeferredWithdrawalDate = 0;
         self.launchJettonDeferredWithdrawalAmount = 0;
@@ -396,7 +396,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Cancels the deferred withdrawal of collateral jettons and resets the related data. Can be called by either the creator or the royalty wallet.
     receive(msg: StopCollateralDeferredWithdrawal) {
-        require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.farm, "Access is only for the owner or royaltyWallet or farm");
+        require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.dao, "Access is only for the owner or royaltyWallet or dao");
         require(self.collateralJettonDeferredWithdrawalDate != 0, "Collateral jetton deferred withdrawal date is not set");
         self.collateralJettonDeferredWithdrawalDate = 0;
         self.recipientDeferredWithdrawalCollateralJetton = self.owner;
@@ -439,8 +439,8 @@ contract ProofOfCapital with Deployable, Ownable {
         if (self.owner == self.reserveOwner) {
             self.reserveOwner = msg.newOwner;
         }
-        if (self.owner == self.farm) {
-            self.farm = msg.newOwner;
+        if (self.owner == self.dao) {
+            self.dao = msg.newOwner;
         }
         self.owner = msg.newOwner;
     }
@@ -510,7 +510,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Verifies the uniqueness and validity of the new addresses.
     // Intended for withdrawing third-party jettons mistakenly sent to the contract.
     receive(msg: AddAdditionalJettonData) {
-        require(sender() == self.farm, "Access is only for the owner");
+        require(sender() == self.dao, "Access is only for the owner");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in mesage cannot be zero");
         if (now() < self.lockEndTime) {
@@ -518,7 +518,7 @@ contract ProofOfCapital with Deployable, Ownable {
             require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in mesage cannot be collateral jetton wallet");
         }
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
-        self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.farm, msg.amount, SendOtherJettonsToFarm{}.toCell(), self.commission * 2, self.commission);
+        self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.dao, msg.amount, SendOtherJettonsToDao{}.toCell(), self.commission * 2, self.commission);
         self.queryId += 1;
     }
 
@@ -823,10 +823,10 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     if (collateralAmountToPay > 0) {
                         if (self.jettonCollateral) {
-                            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.farm, collateralAmountToPay, PriceGrowthBuyback{}.toCell(), self.commission * 2, self.commission);
+                            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, collateralAmountToPay, PriceGrowthBuyback{}.toCell(), self.commission * 2, self.commission);
                         } else {
                             message(MessageParameters{
-                                to: self.farm,
+                                to: self.dao,
                                 value: collateralAmountToPay,
                                 bounce: true,
                                 mode: SendPayFwdFeesSeparately,
@@ -926,19 +926,19 @@ contract ProofOfCapital with Deployable, Ownable {
         
 
     // You can use DAO for launch and manage your contract. Reed more aboutt this on https://tokens.family
-    receive(msg: SetFarm) {
-        require(sender() == self.farm, "Access is only for the farm");
-        self.farm = msg.farm;
+    receive(msg: SetDao) {
+        require(sender() == self.dao, "Access is only for the dao");
+        self.dao = msg.dao;
     }
 
     // Transfers all unsold jettons to the owner after the lock period ends.
     // Verifies caller's permission and lock time.
     // Resets the contract state to initial parameters.
     receive(msg: WithdrawAllCoins) {
-        require(sender() == self.farm, "Access is only for the farm");
+        require(sender() == self.dao, "Access is only for the dao");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
-        self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.farm, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
+        self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.dao, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractJettonBalance = 0;
         self.isActive = false;
     }
@@ -947,11 +947,11 @@ contract ProofOfCapital with Deployable, Ownable {
     // Verifies caller's permission, lock time, and collateral mode.
     // Resets the collateral balance after the transfer.
     receive(msg: WithdrawAllCollateralCoins) {
-        require(sender() == self.farm, "Access is only for the farm");
+        require(sender() == self.dao, "Access is only for the dao");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         require(self.jettonCollateral, "Jetton collateral is not used.");
-        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.farm, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission);
+        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractCollateralBalance = 0;
         self.isActive = false;
     }
@@ -960,15 +960,15 @@ contract ProofOfCapital with Deployable, Ownable {
     // Verifies caller's permission and lock time.
     // Resets the collateral balance and updates the TON balance used for fees.
     receive(msg: WithdrawAllTons) {
-        require(sender() == self.farm, "Access is only for the farm");
+        require(sender() == self.dao, "Access is only for the dao");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         let amount: Int = myBalance() - context().value - self.commission;
         message(MessageParameters{
-            to: self.farm,
+            to: self.dao,
             value: amount,
             mode: SendIgnoreErrors | SendRemainingValue,
             bounce: true,
-            body: PaybackToFarm{}.toCell()
+            body: PaybackToDao{}.toCell()
         });
         self.contractCollateralBalance = 0;
         self.isActive = false;

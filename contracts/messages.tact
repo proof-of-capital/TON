@@ -148,11 +148,11 @@ message FetchNumberOfMarketMakers {
     originalGasTo: Address;
 }
 
-message SetFarm {
-    farm: Address;
+message SetDao {
+    dao: Address;
 }
 
-message PaybackToFarm {}
+message PaybackToDao {}
 
 message PriceGrowthBuyback {}
 
@@ -175,7 +175,7 @@ message LaunchJettonDeferredWithdrawal {}
 
 message CollateralJettonDeferredWithdrawal {}
 
-message SendOtherJettonsToFarm {}
+message SendOtherJettonsToDao {}
 
 message SendChangeToOwner {}
 
