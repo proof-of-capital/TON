@@ -165,7 +165,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.oldContractAddressesMap = emptyMap();
         self.oldContractAddressesLength = 0;
 
-        self.id = 0;
+        self.id = id;
         self.owner = owner;
         self.launchJettonMasterAddress = launchJettonMasterAddress;
         self.contractLaunchJettonWalletAddress = owner;
@@ -1663,6 +1663,10 @@ contract ProofOfCapital with Deployable, Ownable {
 
     get fun owner_address(): Address {
         return self.owner;
+    }
+
+    get fun contract_id(): Int {
+        return self.id;
     }
 
     get fun reserve_owner_address(): Address {
