@@ -260,7 +260,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     to: self.jettonCollateralMasterAddress,
                     value: 0,
                     mode: SendRemainingValue,
-                    body: ProvideWalletAddress{query_id: now(), owner_address: myAddress(), include_address: true}.toCell()
+                    body: ProvideWalletAddress{query_id: now(), owner_address: myAddress(), include_address: false}.toCell()
                 });
             } else {
                 if (self.offsetJettons > 0) {
