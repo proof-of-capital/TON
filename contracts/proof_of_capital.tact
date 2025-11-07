@@ -251,7 +251,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Change flag isInitialized after all jetton wallets received.
     // Sets unaccounted offset balance instead of immediately calculating offset.
     receive(msg: TakeWalletAddress) {
-        require(sender() == self.launchJettonMasterAddress || sender() == self.jettonCollateralMasterAddress, "Invalid lounch or collateral jetton master sender");
+        require(sender() == self.launchJettonMasterAddress || sender() == self.jettonCollateralMasterAddress, "Invalid launch or collateral jetton master sender");
         require(!self.isInitialized, "Contract jetton wallets are already initialized");
         if (sender() == self.launchJettonMasterAddress) {
             self.contractLaunchJettonWalletAddress = msg.wallet_address;
