@@ -292,7 +292,7 @@ contract ProofOfCapital with Deployable, Ownable {
             message(MessageParameters{
                 to: self.owner,
                 value: 0,
-                bounce: true,
+                bounce: false,
                 mode: SendPayFwdFeesSeparately,
                 body: "Lock extended for 182 days.".asComment()
             });
@@ -300,7 +300,7 @@ contract ProofOfCapital with Deployable, Ownable {
             message(MessageParameters{
                 to: self.owner,
                 value: 0,
-                bounce: true,
+                bounce: false,
                 mode: SendPayFwdFeesSeparately,
                 body: "Lock extended for 10 minutes.".asComment()
             });
@@ -308,7 +308,7 @@ contract ProofOfCapital with Deployable, Ownable {
             message(MessageParameters{
                 to: self.owner,
                 value: 0,
-                bounce: true,
+                bounce: false,
                 mode: SendPayFwdFeesSeparately,
                 body: "Lock extended for 3 months.".asComment()
             });
@@ -341,7 +341,7 @@ contract ProofOfCapital with Deployable, Ownable {
         message(MessageParameters{
             to: msg.recipientAddress,
             value: self.commission,
-            bounce: true,
+            bounce: false,
             mode: SendPayFwdFeesSeparately,
             body: "Requested withdrawal of launch jettons to recipient of current transaction after 30 days".asComment()
         });
@@ -388,7 +388,7 @@ contract ProofOfCapital with Deployable, Ownable {
         message(MessageParameters{
             to: msg.recipientAddress,
             value: self.commission,
-            bounce: true,
+            bounce: false,
             mode: SendPayFwdFeesSeparately,
             body: "Requested withdrawal of collateral jettons to recipient of current transaction after 30 days".asComment()
         });
@@ -418,7 +418,7 @@ contract ProofOfCapital with Deployable, Ownable {
             message(MessageParameters{
                 to: self.recipientDeferredWithdrawalCollateralJetton,
                 value: self.contractCollateralBalance,
-                bounce: true,
+                bounce: false,
                 mode: SendPayFwdFeesSeparately,
                 body: "Collateral jetton deferred withdrawal".asComment()
             });
@@ -461,7 +461,7 @@ contract ProofOfCapital with Deployable, Ownable {
         message(MessageParameters{
             to: self.royaltyWalletAddress,
             value: self.commission,
-            bounce: true,
+            bounce: false,
             mode: SendPayFwdFeesSeparately,
             body: "Profit mode switched".asComment()
         });
@@ -649,14 +649,14 @@ contract ProofOfCapital with Deployable, Ownable {
                     message(MessageParameters{
                         to: self.owner,
                         value: creatorProfit,
-                        bounce: true,
+                        bounce: false,
                         mode: SendPayFwdFeesSeparately,
                         body: "Send profit to the owner".asComment()
                     });
                     message(MessageParameters{
                         to: self.royaltyWalletAddress,
                         value: royaltyProfit,
-                        bounce: true,
+                        bounce: false,
                         mode: SendPayFwdFeesSeparately,
                         body: "Send profit to royalty".asComment()
                     });
@@ -828,7 +828,7 @@ contract ProofOfCapital with Deployable, Ownable {
                             message(MessageParameters{
                                 to: self.dao,
                                 value: collateralAmountToPay,
-                                bounce: true,
+                                bounce: false,
                                 mode: SendPayFwdFeesSeparately,
                                 body: PriceGrowthBuyback{}.toCell()
                             });
@@ -863,7 +863,7 @@ contract ProofOfCapital with Deployable, Ownable {
                         message(MessageParameters{
                             to: msg.sender,
                             value: collateralAmountToPay,
-                            bounce: true,
+                            bounce: false,
                             mode: SendPayFwdFeesSeparately,
                             body: "Collateral Buyback".asComment()
                         });
@@ -895,7 +895,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 message(MessageParameters{
                     to: self.owner,
                     value: change,
-                    bounce: true,
+                    bounce: false,
                     mode: SendPayFwdFeesSeparately,
                     body: "Send change to the owner".asComment()
                 });
@@ -967,7 +967,7 @@ contract ProofOfCapital with Deployable, Ownable {
             to: self.dao,
             value: amount,
             mode: SendIgnoreErrors | SendRemainingValue,
-            bounce: true,
+            bounce: false,
             body: PaybackToDao{}.toCell()
         });
         self.contractCollateralBalance = 0;
@@ -988,7 +988,7 @@ contract ProofOfCapital with Deployable, Ownable {
             to: self.owner,
             value: unusedTonToWithdraw,
             mode: SendPayFwdFeesSeparately | SendBounceIfActionFail,
-            bounce: true,
+            bounce: false,
             body: "Send unused tons to the owner".asComment()
         });
     }
@@ -1004,7 +1004,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 message(MessageParameters{
                     to: sender(),
                     value: self.ownerTonBalance,
-                    bounce: true,
+                    bounce: false,
                     mode: SendPayFwdFeesSeparately,
                     body: "Send profit to the owner".asComment()
                 });
@@ -1019,7 +1019,7 @@ contract ProofOfCapital with Deployable, Ownable {
                  message(MessageParameters{
                     to: sender(),
                     value: self.royaltyTonBalance,
-                    bounce: true,
+                    bounce: false,
                     mode: SendPayFwdFeesSeparately,
                     body: "Send profit to royalty".asComment()
                 });
