@@ -293,7 +293,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 to: self.owner,
                 value: 0,
                 bounce: false,
-                mode: SendPayFwdFeesSeparately,
+                mode: SendRemainingValue,
                 body: "Lock extended for 182 days.".asComment()
             });
         } else if (msg.additionalTime == TEN_MINUTES) {
@@ -301,7 +301,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 to: self.owner,
                 value: 0,
                 bounce: false,
-                mode: SendPayFwdFeesSeparately,
+                mode: SendRemainingValue,
                 body: "Lock extended for 10 minutes.".asComment()
             });
         } else {
@@ -309,7 +309,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 to: self.owner,
                 value: 0,
                 bounce: false,
-                mode: SendPayFwdFeesSeparately,
+                mode: SendRemainingValue,
                 body: "Lock extended for 3 months.".asComment()
             });
         }
@@ -332,6 +332,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Schedules a deferred withdrawal of the launch jetton in 30 days to the specified address.
     receive(msg: JettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(msg.amount > 0 && msg.recipientAddress != newAddress(0, 0), "Recipient address and jetton amount cannot be zero");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.launchJettonDeferredWithdrawalAmount == 0, "Launch jetton deferred withdrawal is already scheduled");
@@ -380,6 +381,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Schedules a deferred withdrawal of the collateral jettons in 30 days to the specified address.
     receive(msg: CollateralDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(msg.recipientAddress != newAddress(0, 0), "Recipient address cannot be null");
         require(self.collateralJettonDeferredWithdrawalDate == 0, "Collateral jetton deferred withdrawal is already scheduled");
@@ -978,6 +980,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Takes into account the collateral mode and deducts the fee.
     receive(msg: WithdrawUnusedTons) {
         require(sender() == self.owner, "Access is only for the owner");
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         let unusedTonToWithdraw: Int = 0;
         if (self.jettonCollateral) {
             unusedTonToWithdraw = myBalance() - (self.commission * COMMISSION_MULTIPLIER);
