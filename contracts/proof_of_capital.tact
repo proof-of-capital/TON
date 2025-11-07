@@ -348,7 +348,7 @@ contract ProofOfCapital with Deployable, Ownable {
         });
     }
 
-    // Cancels the delayed withdrawal of the launch jetton and resets the associated data. It can be used by both the creator and the royalty wallet.
+    // Cancels the delayed withdrawal of the launch jetton and resets the associated data. It can be used by the creator, the royalty wallet, or the dao.
     receive(msg: StopJettonDeferredWithdrawal) {
         require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.dao, "Access is only for the owner or royaltyWallet or dao");
         require(self.launchJettonDeferredWithdrawalDate != 0, "Launch jetton deferred withdrawal date is not set");
@@ -396,7 +396,7 @@ contract ProofOfCapital with Deployable, Ownable {
         });
     }
 
-    // Cancels the deferred withdrawal of collateral jettons and resets the related data. Can be called by either the creator or the royalty wallet.
+    // Cancels the deferred withdrawal of collateral jettons and resets the related data. Can be called by the creator, the royalty wallet, or the dao.
     receive(msg: StopCollateralDeferredWithdrawal) {
         require(sender() == self.owner || sender() == self.royaltyWalletAddress || sender() == self.dao, "Access is only for the owner or royaltyWallet or dao");
         require(self.collateralJettonDeferredWithdrawalDate != 0, "Collateral jetton deferred withdrawal date is not set");
