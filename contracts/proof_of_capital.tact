@@ -74,7 +74,6 @@ contract ProofOfCapital with Deployable, Ownable {
     trendChangeStep: Int as uint8; // Step at which the trend changes — after this step, the number of issued tokens starts to decrease
     levelDecreaseMultiplierafterTrend: Int as int16; // Multiplier for decreasing the number of tokens per level after the trend change
     profitPercentage: Int as uint16; // Profit percentage to be distributed between the owner and the royalty wallet
-    queryId: Int as uint64; // Identifier of the last transaction
     totalJettonsSold: Int as coins; // Total number of jettons sold
     contractCollateralBalance: Int as coins; // Balance of collateral jettons
     contractJettonBalance: Int as coins; // Balance of the contract's launch jetton
@@ -193,7 +192,6 @@ contract ProofOfCapital with Deployable, Ownable {
         self.remainderOfStep = firstLevelJettonQuantity;
         self.contractJettonBalance = 0;
         self.jettonsEarned = 0;
-        self.queryId = 0;
         self.contractCollateralBalance = 0;
         self.additionalJettonWalletAddress = owner;
         self.totalJettonsSold = 0;
@@ -550,7 +548,6 @@ contract ProofOfCapital with Deployable, Ownable {
         }
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
         self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.dao, msg.amount, SendOtherJettonsToDao{}.toCell(), self.commission * 2, self.commission);
-        self.queryId += 1;
     }
 
     // Adds a new market maker address to the map if it is not already present.
@@ -693,8 +690,6 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.totalJettonsSold += totalTokens;
 
                 self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
-
-                self.queryId += 1;
             }
         }
     }
@@ -1096,7 +1091,7 @@ contract ProofOfCapital with Deployable, Ownable {
             to: toAddress,
             value: value,
             body: JettonTransfer{
-                queryId: self.queryId,
+                queryId: now(),
                 amount: amount,
                 destination: recipient,
                 responseDestination: recipient,
@@ -1877,7 +1872,7 @@ contract ProofOfCapital with Deployable, Ownable {
         contractState.append("|PP:");
         contractState.append(self.profitPercentage.toString());
         contractState.append("|QI:");
-        contractState.append(self.queryId.toString());
+        contractState.append(now().toString());
         contractState.append("|CSB:");
         contractState.append(self.contractCollateralBalance.toCoinsString());
         contractState.append("|CRTB: ");
