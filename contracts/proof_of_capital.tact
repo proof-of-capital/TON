@@ -27,6 +27,7 @@ import "./messages";
 
 const TEN_MINUTES: Int = 600; // 10 minutes (used for lock extension in tests)
 const MIN_CONTROL_PERIOD: Int = 21_600; // 6 hours (minimum duration of the "unlock window" — the period when the contract is open to all)
+const RETURN_WALLET_CHANGE_DELAY: Int = 86_400; // 24 hours delay for return wallet change proposal confirmation
 
 const SEVEN_DAYS: Int = 604_000; // 7 days (used as the period for deferred withdrawal)
 const THIRTY_DAYS: Int = 2_592_000; // 30 days before the deferred withdrawal dates for the primary and backing tokens
@@ -136,6 +137,10 @@ contract ProofOfCapital with Deployable, Ownable {
     dao: Address; // DAO address
     unaccountedCollateralBalance: Int as coins = 0; // Unaccounted collateral balance
     unaccountedOffsetBalance: Int as coins = 0; // Unaccounted offset balance
+
+    // Return wallet change proposal
+    proposedReturnWalletAddress: Address? = null; // Proposed return wallet address
+    proposedReturnWalletChangeTime: Int as uint64 = 0; // Time when return wallet change was proposed
 
     isInitialized: Bool = false; // Flag indicating whether the contract's jetton wallets are initialized (required to run self.calculateOffset())
 
@@ -464,13 +469,43 @@ contract ProofOfCapital with Deployable, Ownable {
         self.notify("Commission value changed".asComment());
     }
 
-    // Updates the return wallet address.
-    receive(msg: ChangeReturnWallet) {
+    // Proposes a new return wallet address. Requires lock to be active to prevent front-running users.
+    receive(msg: ProposeReturnWalletChange) {
         require(context().value >= self.commission, "Insufficient funds to cover commission");
+        require(!self.checkTradingAccess(), "Lock is not active");
         require(sender() == self.owner, "Access is only for the owner");
         require(msg.newReturnWalletAddress != newAddress(0, 0), "New return wallet address cannot be null");
-        require((!self.oldContractAddressesMap.exists(msg.newReturnWalletAddress)), "Old contract address cannot be equal to any of addresses in contract");
-        self.returnWalletAddress = msg.newReturnWalletAddress;
+        require(
+            msg.newReturnWalletAddress != self.owner &&
+            msg.newReturnWalletAddress != self.reserveOwner &&
+            msg.newReturnWalletAddress != self.launchJettonMasterAddress &&
+            msg.newReturnWalletAddress != self.contractLaunchJettonWalletAddress &&
+            msg.newReturnWalletAddress != self.additionalJettonWalletAddress &&
+            msg.newReturnWalletAddress != self.jettonCollateralMasterAddress &&
+            msg.newReturnWalletAddress != self.contractJettonCollateralWalletAddress &&
+            msg.newReturnWalletAddress != self.returnWalletAddress &&
+            msg.newReturnWalletAddress != self.royaltyWalletAddress &&
+            msg.newReturnWalletAddress != self.recipientDeferredWithdrawalLaunchJetton &&
+            msg.newReturnWalletAddress != self.recipientDeferredWithdrawalCollateralJetton &&
+            (!self.marketMakerAddressesMap.exists(msg.newReturnWalletAddress)) &&
+            (!self.oldContractAddressesMap.exists(msg.newReturnWalletAddress)),
+            "New return wallet address cannot be equal to any of addresses in contract"
+        );
+        self.proposedReturnWalletAddress = msg.newReturnWalletAddress;
+        self.proposedReturnWalletChangeTime = now();
+        self.notify("Return wallet address change proposed".asComment());
+    }
+
+    // Confirms the proposed return wallet address change after 24 hours.
+    receive(msg: ConfirmReturnWalletChange) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
+        require(!self.checkTradingAccess(), "Lock is not active");
+        require(sender() == self.owner, "Access is only for the owner");
+        require(self.proposedReturnWalletAddress != null, "No return wallet address change proposal exists");
+        require(now() >= self.proposedReturnWalletChangeTime + RETURN_WALLET_CHANGE_DELAY, "Return wallet change delay period has not elapsed");
+        self.returnWalletAddress = self.proposedReturnWalletAddress!!;
+        self.proposedReturnWalletAddress = null;
+        self.proposedReturnWalletChangeTime = 0;
         self.notify("Return wallet address changed".asComment());
     }
 

@@ -41,6 +41,12 @@ message ChangeReturnWallet {
     newReturnWalletAddress: Address;
 }
 
+message ProposeReturnWalletChange {
+    newReturnWalletAddress: Address;
+}
+
+message ConfirmReturnWalletChange {}
+
 message WithdrawAllTons {}
 
 message WithdrawAllCoins {}
