@@ -361,7 +361,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Confirms and executes the deferred withdrawal of launch jettons after the waiting period expires.
     receive(msg: ConfirmJettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value >= self.commission * 20, "Insufficient funds to cover commission for transfer profit");
+        require(context().value >= self.commission * 6, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.launchJettonDeferredWithdrawalDate != 0, "Launch jetton deferred withdrawal date is not set or reset");
         require(now() >= self.launchJettonDeferredWithdrawalDate, "Launch jetton deferred withdrawal date is not arrived yet");
@@ -369,7 +369,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
         let amount: Int = min(self.launchJettonDeferredWithdrawalAmount, self.contractJettonBalance - self.totalJettonsSold);
         if (amount > 0) {
-            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalLaunchJetton, amount, LaunchJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission * 19);
+            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalLaunchJetton, amount, LaunchJettonDeferredWithdrawal{}.toCell(), self.commission * 5, self.commission * 4);
         }
         
         self.contractJettonBalance -= amount;
@@ -408,14 +408,14 @@ contract ProofOfCapital with Deployable, Ownable {
     // Confirms and executes the deferred withdrawal of collateral jettons after the waiting period expires.
     receive(msg: ConfirmCollateralDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value >= self.commission * 20, "Insufficient funds to cover commission for transfer profit");
+        require(context().value >= self.commission * 6, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.collateralJettonDeferredWithdrawalDate != 0, "Collateral jetton deferred withdrawal date is not set or reset");
         require(now() >= self.collateralJettonDeferredWithdrawalDate, "Collateral jetton deferred withdrawal date is not arrived yet");
         require(now() <= self.collateralJettonDeferredWithdrawalDate + SEVEN_DAYS, "Collateral jetton deferred withdrawal period is finished");
 
         if (self.jettonCollateral) {
-            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalCollateralJetton, self.contractCollateralBalance, CollateralJettonDeferredWithdrawal{}.toCell(), self.commission * 20, self.commission * 19);
+            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalCollateralJetton, self.contractCollateralBalance, CollateralJettonDeferredWithdrawal{}.toCell(), self.commission * 5, self.commission * 4);
         } else {
             message(MessageParameters{
                 to: self.recipientDeferredWithdrawalCollateralJetton,
@@ -601,34 +601,25 @@ contract ProofOfCapital with Deployable, Ownable {
         } else {
             require(self.isInitialized, "Contract jetton wallets are not initialized yet");
             require(!self.jettonCollateral, "Jetton collateral is used");
-            let value = context().value - 4 * self.commission;
-            require(value >= self.commission, "Insufficient funds to cover commission");
-            let gasMinimum = value / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
-            require(gasMinimum < 20, "Too much value for gas");
-            if (self.profitInTime) {
-                value -= self.commission * (2 + gasMinimum);
-            } else {
-                value -= self.commission * gasMinimum;
-            }
-            require(value >= self.commission, "Insufficient funds to cover commission");
+
             if (sender() == self.owner || sender() == self.oldContractAddress) {
+                require(context().value >= self.commission, "Insufficient funds to cover commission");
+                let value = context().value - self.commission;
                 if (self.offsetJettons - self.jettonsEarned > 0)
                 {   
                     self.unaccountedCollateralBalance += value;
-                    // let deltaCollateralBalance = self.calculateChangeOffsetCollateral(value);
-                    // self.contractCollateralBalance += deltaCollateralBalance;
-                    // let change = value - deltaCollateralBalance;
-                    // if (change > 0) {
-                    //     message(MessageParameters{
-                    //         to: self.owner,
-                    //         value: change,
-                    //         bounce: true,
-                    //         mode: SendPayFwdFeesSeparately,
-                    //         body: "Send change to the owner".asComment()
-                    //     });
-                    // }
                 }
             } else {
+                let value = context().value - 4 * self.commission;
+                require(value >= self.commission, "Insufficient funds to cover commission");
+                let gasMinimum = value / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
+                require(gasMinimum < 20, "Too much value for gas");
+                if (self.profitInTime) {
+                    value -= self.commission * (2 + gasMinimum);
+                } else {
+                    value -= self.commission * gasMinimum;
+                }
+                require(value >= self.commission, "Insufficient funds to cover commission");
                 require(self.isActive, "Contract is not active");
                 if (!self.checkTradingAccess()) {
                     if (self.checkUnlockWindow()) {
@@ -719,29 +710,24 @@ contract ProofOfCapital with Deployable, Ownable {
         let value = context().value;
         require(self.isInitialized, "Contract jetton wallets are not initialized yet");
         require(self.isActive, "Contract is not active");
+        require(value >= self.commission * 3, "Insufficient funds to cover commission");
         if (sender() == self.contractJettonCollateralWalletAddress) {
             try {
                 require(self.jettonCollateral, "Jettons collateral is not used or notification not from your jetton collateral wallet!");
-                let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
-                require(gasMinimum < 20, "Too much value for gas");
-                if (self.profitInTime) {
-                    require(value >= self.commission * (2 + gasMinimum), "Insufficient funds to cover commission for transfer collateral jettons.");
-                } else {
-                    require(value >= self.commission * gasMinimum, "Insufficient funds to cover commission for transfer collateral jettons.");
-                }
                 if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
                     if (self.offsetJettons - self.jettonsEarned > 0) {
                         self.unaccountedCollateralBalance += msg.amount;
-                        // let deltaCollateralBalance = self.calculateChangeOffsetCollateral(msg.amount);
-                        // self.contractCollateralBalance += deltaCollateralBalance;
-                        // let change = msg.amount - deltaCollateralBalance;
-                        // if (change > 0) {
-                        //     self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, change, SendChangeToOwner{}.toCell(), self.commission * 2, self.commission);
-                        // }
                     } else {
                         self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, value, SendBackToOwner{}.toCell(), self.commission * 2, self.commission);
                     }
                 } else {
+                    let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
+                    require(gasMinimum < 20, "Too much value for gas");
+                    if (self.profitInTime) {
+                        require(value >= self.commission * (2 + gasMinimum), "Insufficient funds to cover commission for transfer collateral jettons.");
+                    } else {
+                        require(value >= self.commission * gasMinimum, "Insufficient funds to cover commission for transfer collateral jettons.");
+                    }
                     if (!self.checkTradingAccess()) {
                         if (self.checkUnlockWindow()) {
                             self.controlDay += THIRTY_DAYS * self.calculatePastPeriods();
