@@ -537,11 +537,11 @@ contract ProofOfCapital with Deployable, Ownable {
         self.notify("Profit percentage changed".asComment());
     }
 
-    // Updates the additional jetton addresses and transfers the specified amount to the owner.
+    // Updates the additional jetton addresses and transfers the specified amount to the dao.
     // Verifies the uniqueness and validity of the new addresses.
     // Intended for withdrawing third-party jettons mistakenly sent to the contract.
     receive(msg: AddAdditionalJettonData) {
-        require(sender() == self.dao, "Access is only for the owner");
+        require(sender() == self.dao, "Access is only for the dao");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in message cannot be zero");
         if (now() < self.lockEndTime) {
