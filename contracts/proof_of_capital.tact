@@ -417,6 +417,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Assigns a new main owner. Only the current the reserve owner can perform this action.
     // If the current owner is the the reserve owner, both addresses are updated to the new owner.
     receive(msg: AssignNewOwner) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(sender() == self.owner || sender() == self.reserveOwner, "Only the owner or the reserve owner can make changes.");
         require(msg.newOwner != newAddress(0, 0), "New owner address cannot be null.");
         require((!self.oldContractAddressesMap.exists(msg.newOwner)), "Old contract address cannot be equal to any of addresses in contract");
@@ -427,13 +428,16 @@ contract ProofOfCapital with Deployable, Ownable {
             self.dao = msg.newOwner;
         }
         self.owner = msg.newOwner;
+        self.notify("Owner assigned".asComment());
     }
 
     // Assigns a new the reserve owner. Only the current the reserve owner can perform this action.
     receive(msg: AssignNewReserveOwner) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(sender() == self.reserveOwner, "Only the reserve owner can make changes.");
         require(msg.reserveOwner != newAddress(0, 0), "New the reserve owner address cannot be null.");
         self.reserveOwner = msg.reserveOwner;
+        self.notify("Reserve owner assigned".asComment());
     }
 
     // Toggles the profit withdrawal mode between immediate and on request.
@@ -453,30 +457,37 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Changes the commission value.
     receive(msg: ChangeCommissionValue) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(sender() == self.owner, "Access is only for the owner");
         require(msg.commissionValue >= FIVE_HUNDREDTHS_TON && msg.commissionValue <= ton("10"), "Amount must be greater than 0.05");
         self.commission = msg.commissionValue;
+        self.notify("Commission value changed".asComment());
     }
 
     // Updates the return wallet address.
     receive(msg: ChangeReturnWallet) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(sender() == self.owner, "Access is only for the owner");
         require(msg.newReturnWalletAddress != newAddress(0, 0), "New return wallet address cannot be null");
         require((!self.oldContractAddressesMap.exists(msg.newReturnWalletAddress)), "Old contract address cannot be equal to any of addresses in contract");
         self.returnWalletAddress = msg.newReturnWalletAddress;
+        self.notify("Return wallet address changed".asComment());
     }
 
     // Updates the royalty wallet address. Access is allowed only for the current royalty address.
     receive(msg: ChangeRoyaltyWallet) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(sender() == self.royaltyWalletAddress, "Access is only for royalty.");
         require(msg.newRoyaltyWalletAddress != newAddress(0, 0), "New royalty wallet address cannot be null");
         self.royaltyWalletAddress = msg.newRoyaltyWalletAddress;
+        self.notify("Royalty wallet address changed".asComment());
     }
 
     // Changes the profit distribution between the owner and the royalty.
     // The owner can only increase the royalty percentage.
     // The royalty address can only decrease the royalty percentage.
     receive(msg: ChangeProfitPercentage) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(sender() == self.owner || sender() == self.royaltyWalletAddress, "Access only for the owner or royalty");
         require((msg.newRoyaltyProfitPercentage > 0 && msg.newRoyaltyProfitPercentage <= MAX_PERCENT), "Incorrect value of the royalty profit");
         if (sender() == self.owner) {
@@ -488,6 +499,7 @@ contract ProofOfCapital with Deployable, Ownable {
             self.royaltyProfitPercent = msg.newRoyaltyProfitPercentage;
             self.creatorProfitPercent = MAX_PERCENT - msg.newRoyaltyProfitPercentage;
         }
+        self.notify("Profit percentage changed".asComment());
     }
 
     // Updates the additional jetton addresses and transfers the specified amount to the owner.
