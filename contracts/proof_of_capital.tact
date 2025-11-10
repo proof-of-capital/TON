@@ -289,29 +289,11 @@ contract ProofOfCapital with Deployable, Ownable {
         require(msg.additionalTime == ONE_HUNDRED_EIGHTY_TWO_DAYS || msg.additionalTime == TEN_MINUTES || msg.additionalTime == NINETY_DAYS, "Invalid time!");
         self.lockEndTime += msg.additionalTime;
         if (msg.additionalTime == ONE_HUNDRED_EIGHTY_TWO_DAYS) {
-            message(MessageParameters{
-                to: self.owner,
-                value: 0,
-                bounce: false,
-                mode: SendRemainingValue,
-                body: "Lock extended for 182 days.".asComment()
-            });
+            self.notify("Lock extended for 182 days.".asComment());
         } else if (msg.additionalTime == TEN_MINUTES) {
-            message(MessageParameters{
-                to: self.owner,
-                value: 0,
-                bounce: false,
-                mode: SendRemainingValue,
-                body: "Lock extended for 10 minutes.".asComment()
-            });
+            self.notify("Lock extended for 10 minutes.".asComment());
         } else {
-            message(MessageParameters{
-                to: self.owner,
-                value: 0,
-                bounce: false,
-                mode: SendRemainingValue,
-                body: "Lock extended for 3 months.".asComment()
-            });
+            self.notify("Lock extended for 3 months.".asComment());
         }
     }
 
@@ -951,13 +933,8 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.dao, "Access is only for the dao");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         let amount: Int = myBalance() - context().value - self.commission;
-        message(MessageParameters{
-            to: self.dao,
-            value: amount,
-            mode: SendIgnoreErrors | SendRemainingValue,
-            bounce: false,
-            body: PaybackToDao{}.toCell()
-        });
+        self.notify(PaybackToDao{}.toCell());
+
         self.contractCollateralBalance = 0;
         self.isActive = false;
     }
@@ -1020,44 +997,24 @@ contract ProofOfCapital with Deployable, Ownable {
     // Sends the sender information about the lock end time and deferred withdrawals.
     receive(msg: FetchLockEndTime) {
         require(context().value >= self.commission, "Insufficient funds to cover commission for transfer lock end time");
-        message(MessageParameters{
-            to: sender(),
-            value: 0,
-            bounce: false,
-            mode: SendRemainingValue,
-            body: GetLockEndTime{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, lockEndTime: self.lockEndTime, launchJettonDeferredWTHDate: self.launchJettonDeferredWithdrawalDate, collateralJettonDeferredWTHDate: self.collateralJettonDeferredWithdrawalDate }.toCell()});
+        self.notify(GetLockEndTime{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, lockEndTime: self.lockEndTime, launchJettonDeferredWTHDate: self.launchJettonDeferredWithdrawalDate, collateralJettonDeferredWTHDate: self.collateralJettonDeferredWithdrawalDate }.toCell());
     }
 
     // Sends the current price of the launch jetton to the sender.
     receive(msg: FetchCurrentPrice) {
         require(context().value >= self.commission, "Insufficient funds to cover commission for price");
-        message(MessageParameters{
-            to: sender(),
-            value: 0,
-            bounce: false,
-            mode: SendRemainingValue,
-            body: GetCurrentPrice{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentPrice: self.currentPrice }.toCell()});
+        self.notify(GetCurrentPrice{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentPrice: self.currentPrice }.toCell());
     }
 
     // Sends the number of market makers.
     receive(msg: FetchNumberOfMarketMakers) {
         require(context().value >= self.commission, "Insufficient funds to cover commission for transfer number of market makers");
-        message(MessageParameters{
-            to: sender(),
-            value: 0,
-            bounce: false,
-            mode: SendRemainingValue,
-            body: GetNumberOfMarketMakers{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentNumber: self.marketMakerAddressesLength }.toCell()});
+        self.notify(GetNumberOfMarketMakers{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentNumber: self.marketMakerAddressesLength }.toCell());
     }
     // jetton collateral, launch token, active, current price
     receive(msg: FetchContractInfoAfterUpdatePoc) {
         require(context().value >= self.commission, "Insufficient funds to cover commission for transfer jetton collateral");
-        message(MessageParameters{
-            to: sender(),
-            value: 0,
-            bounce: false,
-            mode: SendRemainingValue,
-            body: GetContractInfoAfterUpdatePoc{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, jettonCollateralAddress: self.jettonCollateralMasterAddress, jettonLaunchAddress: self.launchJettonMasterAddress, isActive: self.isActive, currentPrice: self.currentPrice }.toCell()});
+        self.notify(GetContractInfoAfterUpdatePoc{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, jettonCollateralAddress: self.jettonCollateralMasterAddress, jettonLaunchAddress: self.launchJettonMasterAddress, isActive: self.isActive, currentPrice: self.currentPrice }.toCell());
     }
 
     // Calculates the number of full 30-day periods elapsed since controlDay.
