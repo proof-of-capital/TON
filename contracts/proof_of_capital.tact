@@ -555,6 +555,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.owner, "Access is only for the owner");
         require((!self.oldContractAddressesMap.exists(msg.newMarketMakerAddresse)), "Old contract address cannot be equal to any of addresses in contract");
         if (!self.marketMakerAddressesMap.exists(msg.newMarketMakerAddresse)) {
+            require(self.marketMakerAddressesLength < 256, "Too much market makers");
             self.marketMakerAddressesLength += 1;
             self.marketMakerAddressesMap.set(msg.newMarketMakerAddresse, true);
         } else {
