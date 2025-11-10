@@ -543,10 +543,10 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: AddAdditionalJettonData) {
         require(sender() == self.dao, "Access is only for the owner");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
-        require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in mesage cannot be zero");
+        require(msg.newAdditionalJettonWalletAddress != newAddress(0, 0), "Additional jetton wallet address in message cannot be zero");
         if (now() < self.lockEndTime) {
-            require(msg.newAdditionalJettonWalletAddress != self.contractJettonCollateralWalletAddress, "Additional jetton wallet address in mesage cannot be collateral jetton wallet");
-            require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in mesage cannot be collateral jetton wallet");
+            require(msg.newAdditionalJettonWalletAddress != self.contractJettonCollateralWalletAddress, "Additional jetton wallet address in message cannot be collateral jetton wallet");
+            require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in message cannot be collateral jetton wallet");
         }
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
         self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.dao, msg.amount, SendOtherJettonsToDao{}.toCell(), self.commission * 2, self.commission);
