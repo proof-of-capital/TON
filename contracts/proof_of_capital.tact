@@ -139,6 +139,7 @@ contract ProofOfCapital with Deployable, Ownable {
     unaccountedCollateralBalance: Int as coins = 0; // Unaccounted collateral balance
     unaccountedOffsetBalance: Int as coins = 0; // Unaccounted offset balance
     unaccountedOffsetJettonBalance: Int as coins = 0; // Unaccounted offset jetton balance for gradual processing
+    unaccountedReturnBuybackBalance: Int as coins = 0; // Unaccounted return buyback balance for gradual processing
 
     // Return wallet change proposal
     proposedReturnWalletAddress: Address? = null; // Proposed return wallet address
@@ -814,7 +815,12 @@ contract ProofOfCapital with Deployable, Ownable {
                     let amount: Int = msg.amount;
                     let collateralAmountToPay: Int = 0;
                     let tokensAvailableForReturnBuyback: Int = self.totalJettonsSold - self.jettonsEarned;
-                    let effectiveAmount: Int = min(amount, tokensAvailableForReturnBuyback);
+                    // Add unaccounted balance from previous calls
+                    let totalAmount: Int = amount + self.unaccountedReturnBuybackBalance;
+                    let effectiveAmount: Int = min(totalAmount, tokensAvailableForReturnBuyback);
+                    // Store the difference for future processing
+                    let remainingAmount: Int = totalAmount - effectiveAmount;
+                    self.unaccountedReturnBuybackBalance = remainingAmount;
 
                     if (self.offsetJettons > self.jettonsEarned) {
                         if (effectiveAmount > self.offsetJettons - self.jettonsEarned) {
