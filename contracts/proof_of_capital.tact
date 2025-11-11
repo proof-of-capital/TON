@@ -664,7 +664,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(value - self.commission * 2);
                 let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
-                let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / MAX_PERCENT;
+                let royaltyProfit: Int = self.actualProfit - creatorProfit;
 
                 if (self.profitInTime) {
                     message(MessageParameters{
@@ -764,7 +764,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(msg.amount);
                     let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
-                    let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / MAX_PERCENT;
+                    let royaltyProfit: Int = self.actualProfit - creatorProfit;
                     let netValue: Int = msg.amount - self.actualProfit;
 
                     if (self.profitInTime) {
