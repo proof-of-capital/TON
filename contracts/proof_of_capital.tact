@@ -768,8 +768,8 @@ contract ProofOfCapital with Deployable, Ownable {
                     let netValue: Int = msg.amount - self.actualProfit;
 
                     if (self.profitInTime) {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.royaltyWalletAddress, royaltyProfit, SendProfitToRoyalty{}.toCell(), self.commission, self.commission / 5);
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToTheOwner{}.toCell(), self.commission, self.commission / 5);
+                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.royaltyWalletAddress, royaltyProfit, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
+                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission);
                     } else {
                         self.ownerCollateralBalance += creatorProfit;
                         self.royaltyCollateralBalance += royaltyProfit;
