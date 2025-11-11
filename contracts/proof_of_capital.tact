@@ -637,7 +637,7 @@ contract ProofOfCapital with Deployable, Ownable {
             if (sender() == self.owner || sender() == self.oldContractAddress) {
                 require(context().value >= self.commission, "Insufficient funds to cover commission");
                 let value = context().value - self.commission;
-                if (self.offsetJettons - self.jettonsEarned > 0)
+                if (self.offsetJettons > self.jettonsEarned)
                 {   
                     self.unaccountedCollateralBalance += value;
                 }
@@ -741,7 +741,7 @@ contract ProofOfCapital with Deployable, Ownable {
             try {
                 require(self.jettonCollateral, "Jettons collateral is not used or notification not from your jetton collateral wallet!");
                 if (msg.sender == self.owner || msg.sender == self.oldContractAddress) {
-                    if (self.offsetJettons - self.jettonsEarned > 0) {
+                    if (self.offsetJettons > self.jettonsEarned) {
                         self.unaccountedCollateralBalance += msg.amount;
                     } else {
                         self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, value, SendBackToOwner{}.toCell(), self.commission * 2, self.commission);
