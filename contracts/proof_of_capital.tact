@@ -910,8 +910,8 @@ contract ProofOfCapital with Deployable, Ownable {
 
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted collateral balance");
         require(self.unaccountedCollateralBalance >= msg.amount, "Insufficient unaccounted collateral balance");
-        self.unaccountedCollateralBalance -= msg.amount;
         let deltaCollateralBalance = self.calculateChangeOffsetCollateral(msg.amount);
+        self.unaccountedCollateralBalance -= msg.amount;
         self.contractCollateralBalance += deltaCollateralBalance;
         let change = msg.amount - deltaCollateralBalance;
         if (change > 0) {
@@ -946,8 +946,8 @@ contract ProofOfCapital with Deployable, Ownable {
         require(!self.isInitialized, "Contract already initialized - offset calculation completed");
         
         require(self.unaccountedOffsetBalance >= msg.amount, "Insufficient unaccounted offset balance");
-        self.unaccountedOffsetBalance -= msg.amount;
         self.calculateOffset(msg.amount);
+        self.unaccountedOffsetBalance -= msg.amount;
         
         // Check if all offset has been processed
         if (self.unaccountedOffsetBalance == 0) {
@@ -965,9 +965,9 @@ contract ProofOfCapital with Deployable, Ownable {
         }
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset jetton balance");
         require(self.unaccountedOffsetJettonBalance >= msg.amount, "Insufficient unaccounted offset jetton balance");
-        self.unaccountedOffsetJettonBalance -= msg.amount;
         // @misti:suppress UnusedExpressionResult
         self.calculateChangeOffsetJetton(msg.amount);
+        self.unaccountedOffsetJettonBalance -= msg.amount;
     }   
         
 
