@@ -1212,8 +1212,8 @@ contract ProofOfCapital with Deployable, Ownable {
         self.currentPrice = currentPrice;
 
         self.remainderOfStep = remainderOfStep;
-        self.contractJettonBalance = amountJettons;
-        self.totalJettonsSold = amountJettons;
+        self.contractJettonBalance += amountJettons;
+        self.totalJettonsSold += amountJettons;
     }
 
     // Calculates the offset change for collateral based on the given collateral amount,
