@@ -916,14 +916,14 @@ contract ProofOfCapital with Deployable, Ownable {
         let change = msg.amount - deltaCollateralBalance;
         if (change > 0) {
             if (self.jettonCollateral) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, change, SendChangeToOwner{}.toCell(), self.commission * 2, self.commission);
+                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, change, SendChangeToDao{}.toCell(), self.commission * 2, self.commission);
             } else {
                 message(MessageParameters{
-                    to: self.owner,
+                    to: self.dao,
                     value: change,
                     bounce: false,
                     mode: SendPayFwdFeesSeparately,
-                    body: "Send change to the owner".asComment()
+                    body: SendChangeToDao{}.toCell()
                 });
             }
         }

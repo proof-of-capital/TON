@@ -187,6 +187,8 @@ message SendCollateralJettonsToDao {}
 
 message SendChangeToOwner {}
 
+message SendChangeToDao {}
+
 message SendBackToOwner {}
 
 message SendProfitToTheOwner {}
