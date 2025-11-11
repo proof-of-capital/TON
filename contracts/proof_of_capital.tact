@@ -1350,9 +1350,9 @@ contract ProofOfCapital with Deployable, Ownable {
         let jettonsPerLevel: Int = self.quantityJettonsPerLevel;
         let currentPrice: Int = self.currentPrice;
         let totalProfit: Int = 0;
-        let remainderOfjettons: Int = self.contractJettonBalance - self.totalJettonsSold;
+        let remainderOfJettons: Int = self.contractJettonBalance - self.totalJettonsSold;
 
-        while (remainingCollateralAmount > 0 && remainderOfjettons >= jettonsToGive) {
+        while (remainingCollateralAmount > 0 && remainderOfJettons >= jettonsToGive) {
             let tokensAvailableInStep: Int = remainderOfStep;
             let tonRequiredForStep: Int = tokensAvailableInStep * currentPrice / self.jettonDecimals;
 
@@ -1388,8 +1388,8 @@ contract ProofOfCapital with Deployable, Ownable {
             }
         }
 
-        if (remainderOfjettons < jettonsToGive) {
-            jettonsToGive = remainderOfjettons;
+        if (remainderOfJettons < jettonsToGive) {
+            jettonsToGive = remainderOfJettons;
         }
 
         self.currentStep = localCurrentStep;
