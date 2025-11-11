@@ -1235,9 +1235,6 @@ contract ProofOfCapital with Deployable, Ownable {
                         jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT + self.levelIncreaseMultiplier);
                     }
                     currentPrice = currentPrice * MAX_PERCENT / (MAX_PERCENT + self.priceIncrementMultiplier);
-                }
-
-                if (localCurrentStep > self.currentStepEarned) {
                     localCurrentStep -= 1;
                     remainderOfStep = 0;
                 } else {
@@ -1310,9 +1307,6 @@ contract ProofOfCapital with Deployable, Ownable {
                         jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT + self.levelIncreaseMultiplier);
                     }
                     currentPrice = currentPrice * MAX_PERCENT / (MAX_PERCENT + self.priceIncrementMultiplier);
-                }
-
-                if (localCurrentStep > self.currentStepEarned) {
                     localCurrentStep -= 1;
                     remainderOfStep = 0;
                 } else {
@@ -1476,8 +1470,6 @@ contract ProofOfCapital with Deployable, Ownable {
                         jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT + self.levelIncreaseMultiplier);
                     }
                     currentPrice = currentPrice * MAX_PERCENT / (MAX_PERCENT + self.priceIncrementMultiplier);
-                }
-                if (localCurrentStep > self.currentStepEarned) {
                     localCurrentStep -= 1;
                     remainderOfStep = 0;
                 } else {
