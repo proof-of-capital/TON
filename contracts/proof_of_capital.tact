@@ -31,6 +31,7 @@ const RETURN_WALLET_CHANGE_DELAY: Int = 86_400; // 24 hours delay for return wal
 
 const SEVEN_DAYS: Int = 604_000; // 7 days (used as the period for deferred withdrawal)
 const THIRTY_DAYS: Int = 2_592_000; // 30 days before the deferred withdrawal dates for the primary and backing tokens
+const OLD_CONTRACT_UPDATE_PERIOD: Int = 3_456_000; // 40 days minimum period between old contract address updates
 const SIXTY_DAYS: Int = 5_184_000; // Starting 60 days before the lock-up ends, any token holders can interact with the contract.
 const NINETY_DAYS: Int = 7_776_000; // 90 days (used for lock extension)
 const ONE_HUNDRED_EIGHTY_TWO_DAYS: Int = 15_768_000; // 182 days (used for lock extension)
@@ -55,6 +56,7 @@ contract ProofOfCapital with Deployable, Ownable {
     oldContractAddress: Address; // Address of the old contract, from which coins are expected to be transferred to the current contract (messages are treated as if sent by the owner)
     oldContractAddressesMap: map<Address, Bool>; // Map of old contracts addresses
     oldContractAddressesLength: Int as uint8; // Number of old contracts in the map
+    lastOldContractAddressChangeTime: Int as uint64 = 0; // Time of the last old contract address change
 
     id: Int as uint256; // Unique contract identifier, passed during deployment and used to initialize the contract address when choosing a special address (default is 0)
     owner: Address; // Creator's address — the main owner of the contract, who can manage it and perform certain actions (token deposits, withdrawals, setting locks, changing participants)
@@ -578,9 +580,11 @@ contract ProofOfCapital with Deployable, Ownable {
     // Requires that the address is non-zero and does not match the main contract addresses.
     // Intended for use when "migrating" to a new contract.
     // A lock is set on the new contract, and a deferred withdrawal is initiated on the old one.
+    // Can be changed no more than once every 40 days.
     receive(msg: OldContractAddress) {
         require(!self.checkTradingAccess(), "Lock is not active");
         require(sender() == self.owner, "Access is only for the owner");
+        require(self.lastOldContractAddressChangeTime == 0 || now() >= self.lastOldContractAddressChangeTime + OLD_CONTRACT_UPDATE_PERIOD, "Old contract address can be changed no more than once every 40 days");
         require(msg.oldContractAddress != newAddress(0, 0), "Old contract address cannot be zero");
         require(
             msg.oldContractAddress != self.owner &&
@@ -598,6 +602,7 @@ contract ProofOfCapital with Deployable, Ownable {
             "Old contract address cannot be equal to any of addresses in contract"
         );
         self.oldContractAddress = msg.oldContractAddress;
+        self.lastOldContractAddressChangeTime = now();
         if (!self.oldContractAddressesMap.exists(msg.oldContractAddress)) {
             require(self.oldContractAddressesLength < 256, "Too much old contracts");
             self.oldContractAddressesLength += 1;
