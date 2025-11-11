@@ -1499,12 +1499,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.currentStep = localCurrentStep;
         self.quantityJettonsPerLevel = jettonsPerLevel;
         self.currentPrice = currentPrice;
-
-        if (remainderOfStep < 0) {
-            self.remainderOfStep = 0;
-        } else {
-            self.remainderOfStep = remainderOfStep;
-        }
+        self.remainderOfStep = remainderOfStep;
 
         return collateralAmountToPay;
     }
