@@ -662,7 +662,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 require(value >= self.commission * 2, "Insufficient funds to cover commission");
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
 
-                let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(value);
+                let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(value - self.commission * 2);
                 let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
                 let royaltyProfit: Int = self.actualProfit * self.royaltyProfitPercent / MAX_PERCENT;
 
