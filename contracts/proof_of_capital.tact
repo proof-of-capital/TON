@@ -138,6 +138,7 @@ contract ProofOfCapital with Deployable, Ownable {
     dao: Address; // DAO address
     unaccountedCollateralBalance: Int as coins = 0; // Unaccounted collateral balance
     unaccountedOffsetBalance: Int as coins = 0; // Unaccounted offset balance
+    unaccountedOffsetJettonBalance: Int as coins = 0; // Unaccounted offset jetton balance for gradual processing
 
     // Return wallet change proposal
     proposedReturnWalletAddress: Address? = null; // Proposed return wallet address
@@ -800,8 +801,8 @@ contract ProofOfCapital with Deployable, Ownable {
                             let gasMinimum = 2 + msg.amount / (5 * self.sizeOffsetStep);
                             require(gasMinimum < 20, "Too much value for gas");
                             require(value >= gasMinimum * self.commission, "Amount of TON must be greater than minimal");
-                            // @misti:suppress UnusedExpressionResult
-                            self.calculateChangeOffsetJetton(msg.amount);
+                            // Accumulate offset jetton balance for gradual processing
+                            self.unaccountedOffsetJettonBalance += msg.amount;
                         } else {
                             self.contractJettonBalance += msg.amount;
                         }
@@ -936,6 +937,16 @@ contract ProofOfCapital with Deployable, Ownable {
         if (self.unaccountedOffsetBalance == 0) {
             self.isInitialized = true;
         }
+    }
+
+    // Calculates unaccounted offset jetton balance in parts (gradual processing)
+    receive(msg: CalculateUnaccountedOffsetJetton) {
+        require(sender() == self.owner, "Access is only for the owner");
+        require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset jetton balance");
+        require(self.unaccountedOffsetJettonBalance >= msg.amount, "Insufficient unaccounted offset jetton balance");
+        self.unaccountedOffsetJettonBalance -= msg.amount;
+        // @misti:suppress UnusedExpressionResult
+        self.calculateChangeOffsetJetton(msg.amount);
     }   
         
 
@@ -1871,6 +1882,10 @@ contract ProofOfCapital with Deployable, Ownable {
 
     get fun unaccounted_offset_balance(): Int {
         return self.unaccountedOffsetBalance;
+    }
+
+    get fun unaccounted_offset_jetton_balance(): Int {
+        return self.unaccountedOffsetJettonBalance;
     }
 
     get fun standard_contract_state_collateral_values(): String {

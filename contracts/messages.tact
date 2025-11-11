@@ -208,3 +208,8 @@ message CalculateUnaccountedOffsetBalance {
     queryId: Int as uint64;
     amount: Int as coins;
 }
+
+message CalculateUnaccountedOffsetJetton {
+    queryId: Int as uint64;
+    amount: Int as coins;
+}
