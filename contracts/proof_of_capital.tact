@@ -74,7 +74,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     levelIncreaseMultiplier: Int as int16; // Multiplier for increasing the number of tokens at the next level before the trend change
     trendChangeStep: Int as uint8; // Step at which the trend changes — after this step, the number of issued tokens starts to decrease
-    levelDecreaseMultiplierafterTrend: Int as int16; // Multiplier for decreasing the number of tokens per level after the trend change
+    levelDecreaseMultiplierAfterTrend: Int as int16; // Multiplier for decreasing the number of tokens per level after the trend change
     profitPercentage: Int as uint16; // Profit percentage to be distributed between the owner and the royalty wallet
     totalJettonsSold: Int as coins; // Total number of jettons sold
     contractCollateralBalance: Int as coins; // Balance of collateral jettons
@@ -157,7 +157,7 @@ contract ProofOfCapital with Deployable, Ownable {
         priceIncrementMultiplier: Int,
         levelIncreaseMultiplier: Int,
         trendChangeStep: Int,
-        levelDecreaseMultiplierafterTrend: Int,
+        levelDecreaseMultiplierAfterTrend: Int,
         profitPercentage: Int,
         offsetJettons: Int,
         controlPeriod: Int,
@@ -183,7 +183,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.priceIncrementMultiplier = priceIncrementMultiplier;
         self.levelIncreaseMultiplier = levelIncreaseMultiplier;
         self.trendChangeStep = trendChangeStep;
-        self.levelDecreaseMultiplierafterTrend = levelDecreaseMultiplierafterTrend;
+        self.levelDecreaseMultiplierAfterTrend = levelDecreaseMultiplierAfterTrend;
         self.profitPercentage = profitPercentage;
         self.profitBeforeTrendChange = profitBeforeTrendChange;
         self.jettonCollateral = jettonCollateral;
@@ -236,8 +236,8 @@ contract ProofOfCapital with Deployable, Ownable {
         self.dao = owner;
 
         require(self.initialPricePerToken > 0, "Initial price must be positive");
-        require(self.levelDecreaseMultiplierafterTrend < MAX_PERCENT, "Multiplier too high");
-        require(self.levelDecreaseMultiplierafterTrend > -MAX_PERCENT, "Multiplier too low");
+        require(self.levelDecreaseMultiplierAfterTrend < MAX_PERCENT, "Multiplier too high");
+        require(self.levelDecreaseMultiplierAfterTrend > -MAX_PERCENT, "Multiplier too low");
         require(self.levelIncreaseMultiplier < MAX_PERCENT, "Multiplier too low");
         require(self.levelIncreaseMultiplier > -MAX_PERCENT, "Multiplier too high");
         require(self.priceIncrementMultiplier > 0, "Price increment too low");
@@ -1120,7 +1120,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Calculates the number of tokens per level taking into account the current step and multipliers.
     fun calculateJettonsPerLevel(jettonsPerLevel: Int, currentStep: Int): Int {
         if (currentStep > self.trendChangeStep) {
-            return (jettonsPerLevel * (MAX_PERCENT - self.levelDecreaseMultiplierafterTrend)) / MAX_PERCENT;
+            return (jettonsPerLevel * (MAX_PERCENT - self.levelDecreaseMultiplierAfterTrend)) / MAX_PERCENT;
         } else {
             return (jettonsPerLevel * (MAX_PERCENT + self.levelIncreaseMultiplier)) / MAX_PERCENT;
         }
@@ -1209,7 +1209,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 if (localCurrentStep > self.currentStepEarned) {
                     if (localCurrentStep > self.trendChangeStep) {
-                        jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT - self.levelDecreaseMultiplierafterTrend);
+                        jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT - self.levelDecreaseMultiplierAfterTrend);
                     } else {
                         jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT + self.levelIncreaseMultiplier);
                     }
@@ -1284,7 +1284,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 if (localCurrentStep > self.currentStepEarned) {
                     if (localCurrentStep > self.trendChangeStep) {
-                        jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT - self.levelDecreaseMultiplierafterTrend);
+                        jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT - self.levelDecreaseMultiplierAfterTrend);
                     } else {
                         jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT + self.levelIncreaseMultiplier);
                     }
@@ -1450,7 +1450,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 if (localCurrentStep > self.currentStepEarned) {
                     if (localCurrentStep > self.trendChangeStep) {
-                        jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT - self.levelDecreaseMultiplierafterTrend);
+                        jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT - self.levelDecreaseMultiplierAfterTrend);
                     } else {
                         jettonsPerLevel = jettonsPerLevel * MAX_PERCENT / (MAX_PERCENT + self.levelIncreaseMultiplier);
                     }
@@ -1874,7 +1874,7 @@ contract ProofOfCapital with Deployable, Ownable {
         contractState.append("|TCS:");
         contractState.append(self.trendChangeStep.toString());
         contractState.append("|LDMAT:");
-        contractState.append(self.levelDecreaseMultiplierafterTrend.toString());
+        contractState.append(self.levelDecreaseMultiplierAfterTrend.toString());
         contractState.append("|PP:");
         contractState.append(self.profitPercentage.toString());
         contractState.append("|QI:");
