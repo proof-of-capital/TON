@@ -183,6 +183,8 @@ message CollateralJettonDeferredWithdrawal {}
 
 message SendOtherJettonsToDao {}
 
+message SendCollateralJettonsToDao {}
+
 message SendChangeToOwner {}
 
 message SendBackToOwner {}

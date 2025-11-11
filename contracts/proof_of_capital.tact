@@ -744,7 +744,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     if (self.offsetJettons > self.jettonsEarned) {
                         self.unaccountedCollateralBalance += msg.amount;
                     } else {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, value, SendBackToOwner{}.toCell(), self.commission * 2, self.commission);
+                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, msg.amount, SendCollateralJettonsToDao{}.toCell(), self.commission * 2, self.commission);
                     }
                 } else {
                     let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
