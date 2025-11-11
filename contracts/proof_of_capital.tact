@@ -238,8 +238,8 @@ contract ProofOfCapital with Deployable, Ownable {
         require(self.initialPricePerToken > 0, "Initial price must be positive");
         require(self.levelDecreaseMultiplierAfterTrend < MAX_PERCENT, "Multiplier too high");
         require(self.levelDecreaseMultiplierAfterTrend > -MAX_PERCENT, "Multiplier too low");
-        require(self.levelIncreaseMultiplier < MAX_PERCENT, "Multiplier too low");
-        require(self.levelIncreaseMultiplier > -MAX_PERCENT, "Multiplier too high");
+        require(self.levelIncreaseMultiplier < MAX_PERCENT, "Multiplier too high");
+        require(self.levelIncreaseMultiplier > -MAX_PERCENT, "Multiplier too low");
         require(self.priceIncrementMultiplier > 0, "Price increment too low");
         require(self.priceIncrementMultiplier <= MAX_PERCENT, "Price increment too high");
         require(self.royaltyProfitPercent > 9 && self.royaltyProfitPercent <= MAX_PERCENT, "Started royalty profit cannot be less than ten and greater than thousand");
