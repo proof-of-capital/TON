@@ -659,11 +659,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     }
                     require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
                 }
-                if (self.marketMakerAddressesMap.exists(sender())) {
-                    require(value >= self.commission * 2, "Insufficient funds to cover commission");
-                } else {
-                    require(value >= self.commission, "Insufficient funds to cover commission");
-                }
+                require(value >= self.commission * 2, "Insufficient funds to cover commission");
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
 
                 let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(value);
