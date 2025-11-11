@@ -1015,10 +1015,10 @@ contract ProofOfCapital with Deployable, Ownable {
         self.isActive = false;
     }
 
-    // Sends unused TON to the owner.
+    // Sends unused TON to the dao.
     // Takes into account the collateral mode and deducts the fee.
     receive(msg: WithdrawUnusedTons) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(sender() == self.dao, "Access is only for the dao");
         require(context().value >= self.commission, "Insufficient funds to cover commission");
         let unusedTonToWithdraw: Int = 0;
         if (self.jettonCollateral) {
@@ -1027,11 +1027,11 @@ contract ProofOfCapital with Deployable, Ownable {
             unusedTonToWithdraw = myBalance() - self.contractCollateralBalance - self.ownerTonBalance - self.royaltyTonBalance - (self.commission * COMMISSION_MULTIPLIER);
         }
         message(MessageParameters{
-            to: self.owner,
+            to: self.dao,
             value: unusedTonToWithdraw,
             mode: SendPayFwdFeesSeparately | SendBounceIfActionFail,
             bounce: false,
-            body: "Send unused tons to the owner".asComment()
+            body: SendUnusedTonsToDao{}.toCell()
         });
     }
 

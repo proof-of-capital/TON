@@ -189,6 +189,8 @@ message SendChangeToOwner {}
 
 message SendChangeToDao {}
 
+message SendUnusedTonsToDao {}
+
 message SendBackToOwner {}
 
 message SendProfitToTheOwner {}
