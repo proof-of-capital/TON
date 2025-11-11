@@ -869,7 +869,6 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     let tokensAvailableForBuyback: Int = self.totalJettonsSold - max(self.offsetJettons, self.jettonsEarned);
                     let tokenForBuyback: Int = msg.amount;
-                    require(tokensAvailableForBuyback > 0, "Not have tokensAvailableForBuyback");
                     require(tokensAvailableForBuyback >= tokenForBuyback, "Insufficient tokens available for buyback");
 
                     let collateralAmountToPay: Int = self.calculateCollateralToPayForTokenAmount(tokenForBuyback);
