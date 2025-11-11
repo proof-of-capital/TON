@@ -1024,7 +1024,7 @@ contract ProofOfCapital with Deployable, Ownable {
         if (self.jettonCollateral) {
             unusedTonToWithdraw = myBalance() - (self.commission * COMMISSION_MULTIPLIER);
         } else {
-            unusedTonToWithdraw = myBalance() - self.contractCollateralBalance - self.ownerTonBalance - self.royaltyTonBalance - (self.commission * COMMISSION_MULTIPLIER);
+            unusedTonToWithdraw = myBalance() - self.contractCollateralBalance - self.unaccountedCollateralBalance - self.ownerTonBalance - self.royaltyTonBalance - (self.commission * COMMISSION_MULTIPLIER);
         }
         message(MessageParameters{
             to: self.dao,
