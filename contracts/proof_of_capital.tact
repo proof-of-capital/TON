@@ -655,7 +655,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 require(self.isActive, "Contract is not active");
                 if (!self.checkTradingAccess()) {
                     if (self.checkUnlockWindow()) {
-                        self.controlDay += THIRTY_DAYS * self.calculatePastPeriods();
+                        self.controlDay += THIRTY_DAYS;
                     }
                     require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
                 }
@@ -756,7 +756,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     }
                     if (!self.checkTradingAccess()) {
                         if (self.checkUnlockWindow()) {
-                            self.controlDay += THIRTY_DAYS * self.calculatePastPeriods();
+                            self.controlDay += THIRTY_DAYS;
                         }
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
@@ -851,7 +851,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 } else {
                     if (!self.checkTradingAccess()) {
                         if (self.checkUnlockWindow()) {
-                            self.controlDay += THIRTY_DAYS * self.calculatePastPeriods();
+                            self.controlDay += THIRTY_DAYS;
                         }
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
