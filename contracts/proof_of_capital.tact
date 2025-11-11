@@ -1310,7 +1310,6 @@ contract ProofOfCapital with Deployable, Ownable {
                     localCurrentStep -= 1;
                     remainderOfStep = 0;
                 } else {
-                    localCurrentStep = self.currentStepEarned;
                     remainderOfStep = jettonsPerLevel;
                     remainingAddJettons = 0;
                 }
