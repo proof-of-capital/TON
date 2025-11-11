@@ -1366,7 +1366,7 @@ contract ProofOfCapital with Deployable, Ownable {
             let tokensAvailableInStep: Int = remainderOfStep;
             let tonRequiredForStep: Int = tokensAvailableInStep * currentPrice / self.jettonDecimals;
 
-            if (remainingCollateralAmount >= tonRequiredForStep) {
+            if (remainingCollateralAmount >= tonRequiredForStep && remainderOfJettons >= jettonsToGive + tokensAvailableInStep) {
                 jettonsToGive += tokensAvailableInStep;
                 let profitPercentage: Int = self.calculateProfit(localCurrentStep);
 
