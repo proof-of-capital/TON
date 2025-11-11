@@ -1068,11 +1068,15 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Checks if the current time is within the controlled period after controlDay.
     fun checkControlDay(): Bool {
-        if (now() - self.controlDay > THIRTY_DAYS && (now() - self.controlDay - THIRTY_DAYS) < self.controlPeriod) {
+        let timeSinceControlDay: Int = now() - self.controlDay;
+        // Check if we are in the current window
+        if (timeSinceControlDay < self.controlPeriod) {
             return true;
-        } else {
-            return false;
         }
+        // Check if we are in one of the following windows (every 30 days)
+        let periodsSinceControlDay: Int = timeSinceControlDay / THIRTY_DAYS;
+        let timeInCurrentPeriod: Int = timeSinceControlDay - (periodsSinceControlDay * THIRTY_DAYS);
+        return timeInCurrentPeriod < self.controlPeriod;
     }
 
     // Helper function to check if the caller is allowed to trade at the current moment.
@@ -1081,8 +1085,18 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Helper function to check if the current time is within the "unlock window" period after the lock expires.
+    // Accounts for the fact that we might be in one of the following windows, not the current one.
     fun checkUnlockWindow(): Bool {
-        return (now() - self.controlDay - THIRTY_DAYS > self.controlPeriod);
+        let timeSinceControlDay: Int = now() - self.controlDay;
+        // If more than controlPeriod has passed since the last controlDay, we are not in the current window
+        if (timeSinceControlDay > self.controlPeriod) {
+            // Check if we are in one of the following windows (every 30 days)
+            let periodsSinceControlDay: Int = timeSinceControlDay / THIRTY_DAYS;
+            let timeInCurrentPeriod: Int = timeSinceControlDay - (periodsSinceControlDay * THIRTY_DAYS);
+            // If we are still not in a window, return true (need to add 30 days)
+            return timeInCurrentPeriod > self.controlPeriod;
+        }
+        return false;
     }
 
     // Sends the specified amount of jettons with a comment to the given address.
