@@ -901,7 +901,13 @@ contract ProofOfCapital with Deployable, Ownable {
 
 
     receive(msg: CalculateUnaccountedCollateralBalance) {
-        require(sender() == self.owner, "Access is only for the owner");
+        if (!self.checkTradingAccess()) {
+            if (self.checkUnlockWindow()) {
+                self.controlDay += THIRTY_DAYS;
+            }
+            require(sender() == self.owner, "Access is only for the owner");
+        }
+
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted collateral balance");
         require(self.unaccountedCollateralBalance >= msg.amount, "Insufficient unaccounted collateral balance");
         self.unaccountedCollateralBalance -= msg.amount;
@@ -925,7 +931,12 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Calculates unaccounted offset balance in parts
     receive(msg: CalculateUnaccountedOffsetBalance) {
-        require(sender() == self.owner, "Access is only for the owner");
+        if (!self.checkTradingAccess()) {
+            if (self.checkUnlockWindow()) {
+                self.controlDay += THIRTY_DAYS;
+            }
+            require(sender() == self.owner, "Access is only for the owner");
+        }        
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset balance");
         
         // Check that TakeWalletAddress has fully completed and set unaccountedOffsetBalance
@@ -946,7 +957,12 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Calculates unaccounted offset jetton balance in parts (gradual processing)
     receive(msg: CalculateUnaccountedOffsetJetton) {
-        require(sender() == self.owner, "Access is only for the owner");
+        if (!self.checkTradingAccess()) {
+            if (self.checkUnlockWindow()) {
+                self.controlDay += THIRTY_DAYS;
+            }
+            require(sender() == self.owner, "Access is only for the owner");
+        }
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset jetton balance");
         require(self.unaccountedOffsetJettonBalance >= msg.amount, "Insufficient unaccounted offset jetton balance");
         self.unaccountedOffsetJettonBalance -= msg.amount;
