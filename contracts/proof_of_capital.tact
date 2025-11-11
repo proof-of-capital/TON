@@ -943,7 +943,7 @@ contract ProofOfCapital with Deployable, Ownable {
     }   
         
 
-    // You can use DAO for launch and manage your contract. Reed more aboutt this on https://tokens.family
+    // You can use DAO for launch and manage your contract. Read more about this on https://tokens.family
     receive(msg: SetDao) {
         require(sender() == self.dao, "Access is only for the dao");
         self.dao = msg.dao;
