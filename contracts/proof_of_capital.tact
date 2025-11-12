@@ -1977,7 +1977,7 @@ contract ProofOfCapital with Deployable, Ownable {
         contractState.append(ONE_HUNDRED_EIGHTY_TWO_DAYS.toString());
         contractState.append("|TMC:");
         contractState.append(NINETY_DAYS.toString());
-        contractState.append("|TMC:");
+        contractState.append("|TNC:");
         contractState.append(TEN_MINUTES.toString());
         contractState.append("|CC:");
         contractState.append(FIVE_HUNDREDTHS_TON.toCoinsString());
