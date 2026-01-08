@@ -41,6 +41,12 @@ message ChangeReturnWallet {
     newReturnWalletAddress: Address;
 }
 
+message ProposeReturnWalletChange {
+    newReturnWalletAddress: Address;
+}
+
+message ConfirmReturnWalletChange {}
+
 message WithdrawAllTons {}
 
 message WithdrawAllCoins {}
@@ -148,11 +154,11 @@ message FetchNumberOfMarketMakers {
     originalGasTo: Address;
 }
 
-message SetFarm {
-    farm: Address;
+message SetDao {
+    dao: Address;
 }
 
-message PaybackToFarm {}
+message PaybackToDao {}
 
 message PriceGrowthBuyback {}
 
@@ -175,9 +181,15 @@ message LaunchJettonDeferredWithdrawal {}
 
 message CollateralJettonDeferredWithdrawal {}
 
-message SendOtherJettonsToFarm {}
+message SendOtherJettonsToDao {}
+
+message SendCollateralJettonsToDao {}
 
 message SendChangeToOwner {}
+
+message SendChangeToDao {}
+
+message SendUnusedTonsToDao {}
 
 message SendBackToOwner {}
 
@@ -197,6 +209,11 @@ message CalculateUnaccountedCollateralBalance {
 }
 
 message CalculateUnaccountedOffsetBalance {
+    queryId: Int as uint64;
+    amount: Int as coins;
+}
+
+message CalculateUnaccountedOffsetJetton {
     queryId: Int as uint64;
     amount: Int as coins;
 }

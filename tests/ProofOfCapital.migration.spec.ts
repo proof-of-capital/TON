@@ -554,7 +554,10 @@ describe('ProofOfCapital', () => {
 
         const THIRTY_DAYS = 2_592_000;
         blockchain.now = blockchain.now + THIRTY_DAYS + 3600;
-
+        let finalIsActive = await newPocContract.getIsActive();
+        let finalIsActiveOld = await proofOfCapital.getIsActive();
+        expect(finalIsActive).toBe(true);
+        expect(finalIsActiveOld).toBe(true);
         const confirmLaunchWithdrawalResult = await proofOfCapital.send(
             owner.getSender(),
             { value: toNano('1.5') },
@@ -562,6 +565,11 @@ describe('ProofOfCapital', () => {
                 $$type: 'ConfirmJettonDeferredWithdrawal',
             },
         );
+
+        finalIsActive = await newPocContract.getIsActive();
+        finalIsActiveOld = await proofOfCapital.getIsActive();
+        expect(finalIsActive).toBe(true);
+        expect(finalIsActiveOld).toBe(true);
         const confirmCollateralWithdrawalResult = await proofOfCapital.send(
             owner.getSender(),
             { value: toNano('1.5') },
@@ -569,7 +577,10 @@ describe('ProofOfCapital', () => {
                 $$type: 'ConfirmCollateralDeferredWithdrawal',
             },
         );
-
+        finalIsActive = await newPocContract.getIsActive();
+        finalIsActiveOld = await proofOfCapital.getIsActive();
+        expect(finalIsActive).toBe(true);
+        expect(finalIsActiveOld).toBe(false);
         expect(confirmCollateralWithdrawalResult.transactions).toHaveTransaction({
             from: owner.address,
             to: proofOfCapital.address,
@@ -581,7 +592,6 @@ describe('ProofOfCapital', () => {
             to: proofOfCapital.address,
             success: true,
         });
-
         await verifyTransactions(confirmLaunchWithdrawalResult.transactions, owner.address, proofOfCapital.address);
         await verifyTransactions(confirmCollateralWithdrawalResult.transactions, owner.address);
 
