@@ -461,7 +461,7 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: ChangeCommissionValue) {
         require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(sender() == self.owner, "Access is only for the owner");
-        require(msg.commissionValue >= FIVE_HUNDREDTHS_TON && msg.commissionValue <= ton("10"), "Amount must be between 0.05 and 10 TON");
+        require(msg.commissionValue >= FIVE_HUNDREDTHS_TON && msg.commissionValue <= ton("1"), "Amount must be between 0.05 and 10 TON");
         self.commission = msg.commissionValue;
         self.notify("Commission value changed".asComment());
     }
