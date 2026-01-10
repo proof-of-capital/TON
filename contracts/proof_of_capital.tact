@@ -777,9 +777,9 @@ contract ProofOfCapital with Deployable, Ownable {
                         self.updateUnlockWindow();
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
-                    require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance.");
 
                     let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(msg.amount);
+                    require(self.contractJettonBalance > totalTokens, "Insufficient jetton balance.");
                     let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
                     let royaltyProfit: Int = self.actualProfit - creatorProfit;
                     let netValue: Int = msg.amount - self.actualProfit;
