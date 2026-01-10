@@ -980,8 +980,13 @@ contract ProofOfCapital with Deployable, Ownable {
         
 
     // You can use DAO for launch and manage your contract. Read more about this on https://tokens.family
-    receive(msg: SetDao) {
-        require(sender() == self.dao, "Access is only for the dao");
+    receive(msg: SetDao){
+        if(self.dao == newAddress(0, 0)){
+            require(sender() == self.owner, "Access is only for the owner");
+        } else {
+            require(sender() == self.dao, "Access is only for the dao");
+        }
+        
         self.dao = msg.dao;
     }
 
@@ -1016,11 +1021,16 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: WithdrawAllTons) {
         require(sender() == self.dao, "Access is only for the dao");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
-        let amount: Int = myBalance() - context().value - self.commission;
-        self.notify(PaybackToDao{}.toCell());
-
         self.contractCollateralBalance = 0;
         self.isActive = false;
+        let toLeaveOnBalance = (myBalance() - context().value + self.commission) + myStorageDue();
+        nativeReserve(toLeaveOnBalance, ReserveAtMost);
+        message(MessageParameters{
+            to: self.dao,
+            value: 0,
+            mode: SendIgnoreErrors | SendRemainingBalance,
+            body: PaybackToDao{}.toCell(),
+        });
     }
 
     // Sends unused TON to the dao.
