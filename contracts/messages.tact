@@ -205,6 +205,12 @@ message TransferAllLaunchJettonsToOwner {}
 
 message SendAllCollateralBalanceToOwner {}
 
+message UpgradeOwnerShare {}
+
+message UpgradeOwnerShareToDao {
+    amount: Int as coins;
+}
+
 message CalculateUnaccountedCollateralBalance {
     queryId: Int as uint64;
     amount: Int as coins;

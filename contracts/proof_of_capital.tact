@@ -80,6 +80,7 @@ contract ProofOfCapital with Deployable, Ownable {
     contractCollateralBalance: Int as coins; // Balance of collateral jettons
     contractJettonBalance: Int as coins; // Balance of the contract's launch jetton
     jettonsEarned: Int as coins; // Number of earned jettons — these are the jettons returned to the contract from the returnWalletAddress
+    ownerEarnedLaunchTokens: Int as coins; // Number of earned launch tokens by the owner
 
     quantityJettonsPerLevel: Int as coins; // Number of jettons at the current level
     actualProfit: Int as coins; // Actual profit to be distributed between the owner and the royalty wallet
@@ -227,6 +228,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.royaltyTonBalance = 0;
         self.ownerCollateralBalance = 0;
         self.royaltyCollateralBalance = 0;
+        self.ownerEarnedLaunchTokens = 0;
         self.profitInTime = true;
 
         self.royaltyProfitPercent = royaltyProfitPercent;
@@ -592,7 +594,7 @@ contract ProofOfCapital with Deployable, Ownable {
         if (!self.marketMakerAddressesMap.exists(msg.delMarketMakerAddresse)) {
             self.notify("Market maker address does not exist".asComment());
         } else {
-            self.marketMakerAddressesMap.del(msg.delMarketMakerAddresse);
+            let _ = self.marketMakerAddressesMap.del(msg.delMarketMakerAddresse);
             self.marketMakerAddressesLength -= 1;
         }
     }
@@ -823,7 +825,10 @@ contract ProofOfCapital with Deployable, Ownable {
                             self.contractJettonBalance += msg.amount;
                         }
                     }
-                } else if (msg.sender == self.returnWalletAddress) {
+                } else if (msg.sender == self.returnWalletAddress || msg.sender == self.dao) {
+                    if(msg.sender != self.dao){
+                        self.ownerEarnedLaunchTokens += msg.amount;
+                    }
                     let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevelEarned);
                     require(gasMinimum < 20, "Too much value for gas");
                     require(value >= gasMinimum * self.commission, "Amount must be greater than minimal");
@@ -1013,6 +1018,21 @@ contract ProofOfCapital with Deployable, Ownable {
         transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractCollateralBalance = 0;
         self.isActive = false;
+    }
+
+    // Upgrades owner share by transferring earned launch tokens to DAO.
+    receive(msg: UpgradeOwnerShare) {
+        require(sender() == self.dao, "Access is only for the dao");
+        let amount: Int = self.ownerEarnedLaunchTokens;
+        require(amount > 0, "Invalid amount");
+        require(context().value >= self.commission * 2, "Insufficient funds to cover commission");
+        message(MessageParameters{
+            to: self.dao,
+            value: self.commission,
+            mode: SendIgnoreErrors | SendPayFwdFeesSeparately,
+            body: UpgradeOwnerShareToDao{amount:amount}.toCell(),
+        });
+        self.ownerEarnedLaunchTokens = 0;
     }
 
     // Transfers the entire available TON balance to the owner after the lock period ends.
