@@ -839,13 +839,11 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     if (self.offsetJettons > self.jettonsEarned) {
                         if (effectiveAmount > self.offsetJettons - self.jettonsEarned) {
-                            // @misti:suppress UnusedExpressionResult
-                            self.calculateCollateralForTokenAmountEarned(self.offsetJettons - self.jettonsEarned);
+                            let _ = self.calculateCollateralForTokenAmountEarned(self.offsetJettons - self.jettonsEarned);
                             let buybackAmount: Int = effectiveAmount - (self.offsetJettons - self.jettonsEarned);
                             collateralAmountToPay = self.calculateCollateralForTokenAmountEarned(buybackAmount);
                         } else {
-                            // @misti:suppress UnusedExpressionResult
-                            self.calculateCollateralForTokenAmountEarned(effectiveAmount);
+                            let _ =self.calculateCollateralForTokenAmountEarned(effectiveAmount);
                             collateralAmountToPay = 0;
                         }
                     } else {
@@ -940,6 +938,12 @@ contract ProofOfCapital with Deployable, Ownable {
         }
     }
 
+    fun checkAndSetInitialized() {
+        if (self.unaccountedOffsetBalance == 0 && self.unaccountedOffsetJettonBalance == 0) {
+            self.isInitialized = true;
+        }
+    }
+
     // Calculates unaccounted offset balance in parts
     receive(msg: CalculateUnaccountedOffsetBalance) {
         if (!self.checkTradingAccess()) {
@@ -958,10 +962,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.calculateOffset(msg.amount);
         self.unaccountedOffsetBalance -= msg.amount;
         
-        // Check if all offset has been processed
-        if (self.unaccountedOffsetBalance == 0) {
-            self.isInitialized = true;
-        }
+        self.checkAndSetInitialized();
     }
 
     // Calculates unaccounted offset jetton balance in parts (gradual processing)
@@ -972,9 +973,9 @@ contract ProofOfCapital with Deployable, Ownable {
         }
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset jetton balance");
         require(self.unaccountedOffsetJettonBalance >= msg.amount, "Insufficient unaccounted offset jetton balance");
-        // @misti:suppress UnusedExpressionResult
-        self.calculateChangeOffsetJetton(msg.amount);
+        let _ = self.calculateChangeOffsetJetton(msg.amount);
         self.unaccountedOffsetJettonBalance -= msg.amount;
+        self.checkAndSetInitialized();
     }   
         
 
