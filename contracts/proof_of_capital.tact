@@ -564,6 +564,20 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.owner, "Access is only for the owner");
         require((!self.oldContractAddressesMap.exists(msg.newMarketMakerAddresse)), "Old contract address cannot be equal to any of addresses in contract");
         if (!self.marketMakerAddressesMap.exists(msg.newMarketMakerAddresse)) {
+            require(
+                msg.newMarketMakerAddresse != self.owner &&
+                msg.newMarketMakerAddresse != self.reserveOwner &&
+                msg.newMarketMakerAddresse != self.launchJettonMasterAddress &&
+                msg.newMarketMakerAddresse != self.contractLaunchJettonWalletAddress &&
+                msg.newMarketMakerAddresse != self.additionalJettonWalletAddress &&
+                msg.newMarketMakerAddresse != self.jettonCollateralMasterAddress &&
+                msg.newMarketMakerAddresse != self.contractJettonCollateralWalletAddress &&
+                msg.newMarketMakerAddresse != self.returnWalletAddress &&
+                msg.newMarketMakerAddresse != self.royaltyWalletAddress &&
+                msg.newMarketMakerAddresse != self.recipientDeferredWithdrawalLaunchJetton &&
+                msg.newMarketMakerAddresse != self.recipientDeferredWithdrawalCollateralJetton,
+                "New market maker cannot be equal to any of addresses in contract"
+            );
             require(self.marketMakerAddressesLength < 256, "Too much market makers");
             self.marketMakerAddressesLength += 1;
             self.marketMakerAddressesMap.set(msg.newMarketMakerAddresse, true);
