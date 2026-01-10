@@ -27,11 +27,11 @@ import "./messages";
 
 const TEN_MINUTES: Int = 600; // 10 minutes (used for lock extension in tests)
 const MIN_CONTROL_PERIOD: Int = 21_600; // 6 hours (minimum duration of the "unlock window" — the period when the contract is open to all)
-const RETURN_WALLET_CHANGE_DELAY: Int = 86_400; // 24 hours delay for return wallet change proposal confirmation
+const RETURN_WALLET_CHANGE_DELAY: Int = 86_400 * 10; // 10 days delay for return wallet change proposal confirmation
 
 const SEVEN_DAYS: Int = 604_800; // 7 days (used as the period for deferred withdrawal)
 const THIRTY_DAYS: Int = 2_592_000; // 30 days before the deferred withdrawal dates for the primary and backing tokens
-const OLD_CONTRACT_UPDATE_PERIOD: Int = 3_456_000; // 40 days minimum period between old contract address updates
+const OLD_CONTRACT_UPDATE_PERIOD: Int = 86400 * 50; // 50 days minimum period between old contract address updates
 const SIXTY_DAYS: Int = 5_184_000; // Starting 60 days before the lock-up ends, any token holders can interact with the contract.
 const NINETY_DAYS: Int = 7_776_000; // 90 days (used for lock extension)
 const ONE_HUNDRED_EIGHTY_TWO_DAYS: Int = 15_724_800; // 182 days (used for lock extension)
@@ -42,7 +42,7 @@ const COMMISSION_MULTIPLIER: Int = 10; // commission multiplier (used to calcula
 const MAX_PERCENT: Int = 1000; // Maximum percentage value
 
 // Limits the given period to a range between MIN_CONTROL_PERIOD and THIRTY_DAYS.
-fun getPeriod(period: Int): Int {
+inline fun getPeriod(period: Int): Int {
     if (period < MIN_CONTROL_PERIOD) {
         period = MIN_CONTROL_PERIOD;
     } else if (period > THIRTY_DAYS) {
@@ -235,7 +235,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.recipientDeferredWithdrawalLaunchJetton = owner;
         self.recipientDeferredWithdrawalCollateralJetton = owner;
 
-        self.dao = owner;
+        self.dao = address(0);
 
         require(self.initialPricePerToken > 0, "Initial price must be positive");
         require(self.levelDecreaseMultiplierAfterTrend < MAX_PERCENT, "Multiplier too high");
