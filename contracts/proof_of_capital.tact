@@ -506,6 +506,16 @@ contract ProofOfCapital with Deployable, Ownable {
         self.notify("Return wallet address changed".asComment());
     }
 
+    // Cancels the proposed return wallet address change. Access is allowed only for the royalty wallet address.
+    receive(msg: CancelReturnWalletChange) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
+        require(sender() == self.royaltyWalletAddress || sender() == self.dao, "Access is only for royalty");
+        require(self.proposedReturnWalletAddress != null, "No return wallet address change proposal exists");
+        self.proposedReturnWalletAddress = null;
+        self.proposedReturnWalletChangeTime = 0;
+        self.notify("Return wallet address change proposal cancelled".asComment());
+    }
+
     // Updates the royalty wallet address. Access is allowed only for the current royalty address.
     receive(msg: ChangeRoyaltyWallet) {
         require(context().value >= self.commission, "Insufficient funds to cover commission");

@@ -47,6 +47,8 @@ message ProposeReturnWalletChange {
 
 message ConfirmReturnWalletChange {}
 
+message CancelReturnWalletChange {}
+
 message WithdrawAllTons {}
 
 message WithdrawAllCoins {}
