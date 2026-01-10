@@ -124,6 +124,7 @@ contract ProofOfCapital with Deployable, Ownable {
     profitInTime: Bool; // Flag indicating whether profit is withdrawn immediately or upon request (true – on request, false – immediately)
     royaltyProfitPercent: Int as uint16; // Royalty profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
     creatorProfitPercent: Int as uint16; // Owner profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
+    marketMakerProfitPercent: Int as uint16; // Market maker profit percentage (from 0 to MAX_PERCENT (100 %))
     profitBeforeTrendChange: Int as uint16; // Profit percentage before trend change (from 1 (0.1 %) to MAX_PERCENT (100 %))
 
     canWithdrawal: Bool = true; // Flag indicating whether early delayed withdrawal is allowed (true – allowed, false – prohibited)
@@ -233,6 +234,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
         self.royaltyProfitPercent = royaltyProfitPercent;
         self.creatorProfitPercent = MAX_PERCENT - royaltyProfitPercent;
+        self.marketMakerProfitPercent = 0;
 
         self.recipientDeferredWithdrawalLaunchJetton = owner;
         self.recipientDeferredWithdrawalCollateralJetton = owner;
@@ -546,6 +548,15 @@ contract ProofOfCapital with Deployable, Ownable {
         self.notify("Profit percentage changed".asComment());
     }
 
+    // Changes the market maker profit percentage. Access is allowed only for the owner.
+    receive(msg: ChangeMarketMakerProfitPercentage) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
+        require(sender() == self.owner, "Access is only for the owner");
+        require((msg.newMarketMakerProfitPercentage >= 0 && msg.newMarketMakerProfitPercentage <= MAX_PERCENT), "Incorrect value of the market maker profit");
+        self.marketMakerProfitPercent = msg.newMarketMakerProfitPercentage;
+        self.notify("Market maker profit percentage changed".asComment());
+    }
+
     // Updates the additional jetton addresses and transfers the specified amount to the dao.
     // Verifies the uniqueness and validity of the new addresses.
     // Intended for withdrawing third-party jettons mistakenly sent to the contract.
@@ -685,6 +696,11 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(value - self.commission * 2);
                 let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
+                let mmProfit = 0;
+                if(self.lockEndTime > now()){
+                    mmProfit = creatorProfit * self.marketMakerProfitPercent / MAX_PERCENT;
+                    creatorProfit -= mmProfit;
+                }
                 let royaltyProfit: Int = self.actualProfit - creatorProfit;
 
                 if (self.profitInTime) {
@@ -712,7 +728,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.contractCollateralBalance += netValue;
                 self.totalJettonsSold += totalTokens;
 
-                transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission + mmProfit);
             }
         }
     }

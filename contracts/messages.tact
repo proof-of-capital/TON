@@ -96,6 +96,10 @@ message ChangeProfitPercentage {
     newRoyaltyProfitPercentage: Int as uint8;
 }
 
+message ChangeMarketMakerProfitPercentage {
+    newMarketMakerProfitPercentage: Int as uint8;
+}
+
 message BlockDeferredWithdrawal { }
 
 message JettonDeferredWithdrawal {
