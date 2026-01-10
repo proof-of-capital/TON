@@ -812,9 +812,12 @@ contract ProofOfCapital with Deployable, Ownable {
                         self.contractJettonBalance += msg.amount;
                         self.isFirstPurchase = false;
                     } else {
-                        if (self.totalJettonsSold == self.offsetJettons && (self.offsetJettons - self.jettonsEarned) >= msg.amount) {
+                        let availableCapacity: Int = self.offsetJettons - self.jettonsEarned;
+                        if (availableCapacity > self.unaccountedOffsetJettonBalance) {
+                            let remainingCapacity = availableCapacity - self.unaccountedOffsetJettonBalance;
+                            let newAmount = msg.amount < remainingCapacity ? msg.amount : remainingCapacity;
                             // Accumulate offset jetton balance for gradual processing
-                            self.unaccountedOffsetJettonBalance += msg.amount;
+                            self.unaccountedOffsetJettonBalance += msg.amount - newAmount;
                             self.isInitialized = false;
                         } else {
                             self.contractJettonBalance += msg.amount;
