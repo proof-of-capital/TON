@@ -649,7 +649,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Then updates the contract balance and sends jettons to the sender.
 
     receive() {
-        if (self.jettonCollateral && (sender() == self.owner || sender() == self.oldContractAddress)) {
+        if (self.jettonCollateral && sender() == self.owner) {
             require(self.jettonCollateral, "Jetton collateral is not used.");
         } else {
             require(self.isInitialized, "Contract jetton wallets are not initialized yet");
