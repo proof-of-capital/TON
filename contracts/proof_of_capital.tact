@@ -429,9 +429,6 @@ contract ProofOfCapital with Deployable, Ownable {
         if (self.owner == self.reserveOwner) {
             self.reserveOwner = msg.newOwner;
         }
-        if (self.owner == self.dao) {
-            self.dao = msg.newOwner;
-        }
         self.owner = msg.newOwner;
         self.notify("Owner assigned".asComment());
     }
