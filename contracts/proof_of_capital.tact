@@ -813,12 +813,9 @@ contract ProofOfCapital with Deployable, Ownable {
                         self.isFirstPurchase = false;
                     } else {
                         if (self.totalJettonsSold == self.offsetJettons && (self.offsetJettons - self.jettonsEarned) >= msg.amount) {
-                            
-                            let gasMinimum = 2 + msg.amount / (5 * self.sizeOffsetStep);
-                            require(gasMinimum < 20, "Too much value for gas");
-                            require(value >= gasMinimum * self.commission, "Amount of TON must be greater than minimal");
                             // Accumulate offset jetton balance for gradual processing
                             self.unaccountedOffsetJettonBalance += msg.amount;
+                            self.isInitialized = false;
                         } else {
                             self.contractJettonBalance += msg.amount;
                         }
