@@ -235,7 +235,7 @@ contract ProofOfCapital with Deployable, Ownable {
         self.recipientDeferredWithdrawalLaunchJetton = owner;
         self.recipientDeferredWithdrawalCollateralJetton = owner;
 
-        self.dao = address(0);
+        self.dao = newAddress(0, 0);
 
         require(self.initialPricePerToken > 0, "Initial price must be positive");
         require(self.levelDecreaseMultiplierAfterTrend < MAX_PERCENT, "Multiplier too high");
@@ -288,20 +288,18 @@ contract ProofOfCapital with Deployable, Ownable {
         }
     }
 
-    // Extends the lock for a specified period at the request of the owner. Supported durations are 10 minutes, 3 months, or 6 months.
+    // Extends the lock to a specific timestamp at the request of the owner.
     receive(msg: ExtendLock) {
         require(sender() == self.owner, "Access is only for the owner");
         require(context().value >= self.commission, "Amount must be greater than commission");
-        require(((self.lockEndTime + msg.additionalTime) - now()) < ONE_THOUSAND_EIGHT_HUNDRED_TWENTY_FIVE_DAYS, "Lock end time cannot exceed five years");
-        require(msg.additionalTime == ONE_HUNDRED_EIGHTY_TWO_DAYS || msg.additionalTime == TEN_MINUTES || msg.additionalTime == NINETY_DAYS, "Invalid time!");
-        self.lockEndTime += msg.additionalTime;
-        if (msg.additionalTime == ONE_HUNDRED_EIGHTY_TWO_DAYS) {
-            self.notify("Lock extended for 182 days.".asComment());
-        } else if (msg.additionalTime == TEN_MINUTES) {
-            self.notify("Lock extended for 10 minutes.".asComment());
-        } else {
-            self.notify("Lock extended for 3 months.".asComment());
-        }
+        require(msg.lockTimestamp > now(), "Invalid time period");
+        require(msg.lockTimestamp > self.lockEndTime, "New lock must be greater than old");
+        require(msg.lockTimestamp <= now() + ONE_THOUSAND_EIGHT_HUNDRED_TWENTY_FIVE_DAYS, "Lock cannot exceed five years");
+        self.lockEndTime = msg.lockTimestamp;
+        let notification: StringBuilder = beginString();
+        notification.append("Lock extended until ");
+        notification.append(msg.lockTimestamp.toString());
+        self.notify(notification.toString().asComment());
     }
 
     // Locks the ability of the owner to withdraw funds if they want to waive this right during the lock period.

@@ -10,7 +10,7 @@ message(0xd1735400) TakeWalletAddress {
 }
 
 message ExtendLock {
-    additionalTime: Int as uint32;
+    lockTimestamp: Int as uint64;
 }
 
 message(0x7362d09c) JettonTransferNotification {
