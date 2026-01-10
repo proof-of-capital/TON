@@ -1118,7 +1118,11 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Checks if the current time is within the controlled period after controlDay.
-    fun checkControlDay(): Bool {
+    inline fun checkControlDay(): Bool {
+        if(now()<self.controlDay) {
+            return false;
+        }
+        
         let timeSinceControlDay: Int = now() - self.controlDay;
         // Check if we are in the current window
         if (timeSinceControlDay < self.controlPeriod) {
