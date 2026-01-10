@@ -348,7 +348,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Confirms and executes the deferred withdrawal of launch jettons after the waiting period expires.
     receive(msg: ConfirmJettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value >= self.commission * 6, "Insufficient funds to cover commission for transfer profit");
+        require(context().value >= self.commission * 3, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.launchJettonDeferredWithdrawalDate != 0, "Launch jetton deferred withdrawal date is not set or reset");
         require(now() >= self.launchJettonDeferredWithdrawalDate, "Launch jetton deferred withdrawal date is not arrived yet");
@@ -356,7 +356,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
         let amount: Int = min(self.launchJettonDeferredWithdrawalAmount, self.contractJettonBalance - self.totalJettonsSold);
         if (amount > 0) {
-            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalLaunchJetton, amount, LaunchJettonDeferredWithdrawal{}.toCell(), self.commission * 5, self.commission * 4);
+            transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalLaunchJetton, amount, LaunchJettonDeferredWithdrawal{}.toCell(), self.commission * 2, self.commission);
         }
         
         self.contractJettonBalance -= amount;
@@ -395,14 +395,14 @@ contract ProofOfCapital with Deployable, Ownable {
     // Confirms and executes the deferred withdrawal of collateral jettons after the waiting period expires.
     receive(msg: ConfirmCollateralDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value >= self.commission * 6, "Insufficient funds to cover commission for transfer profit");
+        require(context().value >= self.commission * 3, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.collateralJettonDeferredWithdrawalDate != 0, "Collateral jetton deferred withdrawal date is not set or reset");
         require(now() >= self.collateralJettonDeferredWithdrawalDate, "Collateral jetton deferred withdrawal date is not arrived yet");
         require(now() <= self.collateralJettonDeferredWithdrawalDate + SEVEN_DAYS, "Collateral jetton deferred withdrawal period is finished");
 
         if (self.jettonCollateral) {
-            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalCollateralJetton, self.contractCollateralBalance, CollateralJettonDeferredWithdrawal{}.toCell(), self.commission * 5, self.commission * 4);
+            transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalCollateralJetton, self.contractCollateralBalance, CollateralJettonDeferredWithdrawal{}.toCell(), self.commission * 2, self.commission);
         } else {
             message(MessageParameters{
                 to: self.recipientDeferredWithdrawalCollateralJetton,
@@ -549,7 +549,7 @@ contract ProofOfCapital with Deployable, Ownable {
             require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in message cannot be launch jetton wallet");
         }
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
-        self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.dao, msg.amount, SendOtherJettonsToDao{}.toCell(), self.commission * 2, self.commission);
+        transferTokensToWithPayload(self.additionalJettonWalletAddress, self.dao, msg.amount, SendOtherJettonsToDao{}.toCell(), self.commission * 2, self.commission);
     }
 
     // Adds a new market maker address to the map if it is not already present.
@@ -691,7 +691,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.contractCollateralBalance += netValue;
                 self.totalJettonsSold += totalTokens;
 
-                self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
             }
         }
     }
@@ -744,7 +744,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     if (self.offsetJettons > self.jettonsEarned) {
                         self.unaccountedCollateralBalance += msg.amount;
                     } else {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, msg.amount, SendCollateralJettonsToDao{}.toCell(), self.commission * 2, self.commission);
+                        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, msg.amount, SendCollateralJettonsToDao{}.toCell(), self.commission * 2, self.commission);
                     }
                 } else {
                     let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
@@ -768,8 +768,8 @@ contract ProofOfCapital with Deployable, Ownable {
                     let netValue: Int = msg.amount - self.actualProfit;
 
                     if (self.profitInTime) {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.royaltyWalletAddress, royaltyProfit, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission);
+                        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.royaltyWalletAddress, royaltyProfit, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
+                        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission);
                     } else {
                         self.ownerCollateralBalance += creatorProfit;
                         self.royaltyCollateralBalance += royaltyProfit;
@@ -777,7 +777,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     self.contractCollateralBalance += netValue;
                     self.totalJettonsSold += totalTokens;
-                    self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                    transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
 
                 }
             } catch (error) {
@@ -785,7 +785,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 errorComment.append("Something went wrong (");
                 errorComment.append(error.toString());
                 errorComment.append(")");
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, msg.amount, errorComment.toCell(), self.commission * 2, self.commission);
+                transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, msg.amount, errorComment.toCell(), self.commission * 2, self.commission);
             }
         } else {
             try {
@@ -842,7 +842,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     if (collateralAmountToPay > 0) {
                         if (self.jettonCollateral) {
-                            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, collateralAmountToPay, PriceGrowthBuyback{}.toCell(), self.commission * 2, self.commission);
+                            transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, collateralAmountToPay, PriceGrowthBuyback{}.toCell(), self.commission * 2, self.commission);
                         } else {
                             message(MessageParameters{
                                 to: self.dao,
@@ -876,7 +876,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     self.totalJettonsSold -= tokenForBuyback;
 
                     if (self.jettonCollateral) {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, collateralAmountToPay, CollateralBuyback{}.toCell(), self.commission * 2, self.commission);
+                        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, collateralAmountToPay, CollateralBuyback{}.toCell(), self.commission * 2, self.commission);
                     } else {
                         message(MessageParameters{
                             to: msg.sender,
@@ -892,7 +892,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 errorComment.append("Something went wrong (");
                 errorComment.append(error.toString());
                 errorComment.append(")");
-                self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, msg.amount, errorComment.toCell(), self.commission * 2, self.commission);
+                transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, msg.amount, errorComment.toCell(), self.commission * 2, self.commission);
             }
         }
     }
@@ -914,7 +914,7 @@ contract ProofOfCapital with Deployable, Ownable {
         let change = msg.amount - deltaCollateralBalance;
         if (change > 0) {
             if (self.jettonCollateral) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, change, SendChangeToDao{}.toCell(), self.commission * 2, self.commission);
+                transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, change, SendChangeToDao{}.toCell(), self.commission * 2, self.commission);
             } else {
                 message(MessageParameters{
                     to: self.dao,
@@ -982,7 +982,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.dao, "Access is only for the dao");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
-        self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.dao, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
+        transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.dao, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractJettonBalance = 0;
         self.isActive = false;
     }
@@ -995,7 +995,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         require(self.jettonCollateral, "Jetton collateral is not used.");
-        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission);
+        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractCollateralBalance = 0;
         self.isActive = false;
     }
@@ -1038,7 +1038,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         if (sender() == self.owner()) {
             if (self.jettonCollateral) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.ownerCollateralBalance, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission );
+                transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.ownerCollateralBalance, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission );
                 self.ownerCollateralBalance = 0;
             } else {
                 message(MessageParameters{
@@ -1053,7 +1053,7 @@ contract ProofOfCapital with Deployable, Ownable {
         } else {
             require(sender() == self.royaltyWalletAddress, "Access is only for current owner or royalty wallet");
             if (self.jettonCollateral) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.royaltyCollateralBalance, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
+                transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.royaltyCollateralBalance, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
                 self.royaltyCollateralBalance = 0;
             } else {
                  message(MessageParameters{
@@ -1129,24 +1129,7 @@ contract ProofOfCapital with Deployable, Ownable {
         return false;
     }
 
-    // Sends the specified amount of jettons with a comment to the given address.
-    fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell, value: Int, forwardTonAmount: Int) {
 
-        let forwardPayload = beginCell().storeBit(false).storeSlice(payload.asSlice()).asSlice();
-        message(MessageParameters{
-            to: toAddress,
-            value: value,
-            body: JettonTransfer{
-                queryId: now(),
-                amount: amount,
-                destination: recipient,
-                responseDestination: recipient,
-                customPayload: null,
-                forwardTonAmount: forwardTonAmount,
-                forwardPayload: forwardPayload,
-            }.toCell(),
-        });
-    }   
 
     // Returns the profit percentage depending on the current step and the trend change step.
     fun calculateProfit(currentStep: Int): Int {
@@ -1989,3 +1972,22 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
 }
+
+    // Sends the specified amount of jettons with a comment to the given address.
+    fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell, value: Int, forwardTonAmount: Int) {
+
+        let forwardPayload = beginCell().storeBit(false).storeSlice(payload.asSlice()).asSlice();
+        message(MessageParameters{
+            to: toAddress,
+            value: value,
+            body: JettonTransfer{
+                queryId: now(),
+                amount: amount,
+                destination: recipient,
+                responseDestination: recipient,
+                customPayload: null,
+                forwardTonAmount: forwardTonAmount,
+                forwardPayload: forwardPayload,
+            }.toCell(),
+        });
+    }   
