@@ -675,9 +675,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 require(value >= self.commission, "Insufficient funds to cover commission");
                 require(self.isActive, "Contract is not active");
                 if (!self.checkTradingAccess()) {
-                    if (self.checkUnlockWindow()) {
-                        self.controlDay += THIRTY_DAYS;
-                    }
+                    self.updateUnlockWindow();
                     require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
                 }
                 require(value >= self.commission * 2, "Insufficient funds to cover commission");
@@ -776,9 +774,7 @@ contract ProofOfCapital with Deployable, Ownable {
                         require(value >= self.commission * gasMinimum, "Insufficient funds to cover commission for transfer collateral jettons.");
                     }
                     if (!self.checkTradingAccess()) {
-                        if (self.checkUnlockWindow()) {
-                            self.controlDay += THIRTY_DAYS;
-                        }
+                        self.updateUnlockWindow();
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
                     require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance.");
@@ -876,9 +872,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     }
                 } else {
                     if (!self.checkTradingAccess()) {
-                        if (self.checkUnlockWindow()) {
-                            self.controlDay += THIRTY_DAYS;
-                        }
+                        self.updateUnlockWindow();
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
 
@@ -921,9 +915,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     receive(msg: CalculateUnaccountedCollateralBalance) {
         if (!self.checkTradingAccess()) {
-            if (self.checkUnlockWindow()) {
-                self.controlDay += THIRTY_DAYS;
-            }
+            self.updateUnlockWindow();
             require(sender() == self.owner, "Access is only for the owner");
         }
 
@@ -951,9 +943,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Calculates unaccounted offset balance in parts
     receive(msg: CalculateUnaccountedOffsetBalance) {
         if (!self.checkTradingAccess()) {
-            if (self.checkUnlockWindow()) {
-                self.controlDay += THIRTY_DAYS;
-            }
+            self.updateUnlockWindow();
             require(sender() == self.owner, "Access is only for the owner");
         }        
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset balance");
@@ -977,9 +967,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Calculates unaccounted offset jetton balance in parts (gradual processing)
     receive(msg: CalculateUnaccountedOffsetJetton) {
         if (!self.checkTradingAccess()) {
-            if (self.checkUnlockWindow()) {
-                self.controlDay += THIRTY_DAYS;
-            }
+            self.updateUnlockWindow();
             require(sender() == self.owner, "Access is only for the owner");
         }
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset jetton balance");
@@ -1139,19 +1127,30 @@ contract ProofOfCapital with Deployable, Ownable {
         return (self.launchJettonDeferredWithdrawalDate > 0) || (self.collateralJettonDeferredWithdrawalDate > 0) || self.lockEndTime - SIXTY_DAYS < now() || self.checkControlDay();
     }
 
-    // Helper function to check if the current time is within the "unlock window" period after the lock expires.
-    // Accounts for the fact that we might be in one of the following windows, not the current one.
-    fun checkUnlockWindow(): Bool {
-        let timeSinceControlDay: Int = now() - self.controlDay;
-        // If more than controlPeriod has passed since the last controlDay, we are not in the current window
-        if (timeSinceControlDay > self.controlPeriod) {
-            // Check if we are in one of the following windows (every 30 days)
-            let periodsSinceControlDay: Int = timeSinceControlDay / THIRTY_DAYS;
-            let timeInCurrentPeriod: Int = timeSinceControlDay - (periodsSinceControlDay * THIRTY_DAYS);
-            // If we are still not in a window, return true (need to add 30 days)
-            return timeInCurrentPeriod > self.controlPeriod;
+    // Helper function to check if controlDay needs to be updated.
+    // Returns true if updateUnlockWindow() would modify controlDay, false otherwise.
+    inline fun checkUnlockWindow(): Bool {
+        // If controlDay is already in the future, no update needed
+        if (now() < self.controlDay) {
+            return false;
         }
-        return false;
+        // controlDay needs to be updated
+        return true;
+    }
+
+    // Updates the unlock window by shifting controlDay to the nearest future period.
+    fun updateUnlockWindow() {
+        // If controlDay is already in the future, no update needed
+        if (now() < self.controlDay) {
+            return;
+        }
+        
+        // Calculate how many 30-day periods fit between controlDay and current time
+        let timeSinceControlDay: Int = now() - self.controlDay;
+        let periodsToAdd: Int = (timeSinceControlDay / THIRTY_DAYS) + 1;
+        
+        // Shift controlDay to the nearest future period
+        self.controlDay += periodsToAdd * THIRTY_DAYS;
     }
 
 
