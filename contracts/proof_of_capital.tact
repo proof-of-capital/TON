@@ -40,6 +40,7 @@ const FIVE_HUNDREDTHS_TON: Int = ton("0.05"); // minimum TON amount for covering
 const COMMISSION_MULTIPLIER: Int = 10; // commission multiplier (used to calculate the remaining contract balance when withdrawing TON equal to 10 times the fee)
 
 const MAX_PERCENT: Int = 1000; // Maximum percentage value
+const MAX_STEPS: Int = 50; // Maximum number of steps
 
 // Limits the given period to a range between MIN_CONTROL_PERIOD and THIRTY_DAYS.
 inline fun getPeriod(period: Int): Int {
@@ -678,13 +679,7 @@ contract ProofOfCapital with Deployable, Ownable {
             } else {
                 let value = context().value - 4 * self.commission;
                 require(value >= self.commission, "Insufficient funds to cover commission");
-                let gasMinimum = value / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
-                require(gasMinimum < 20, "Too much value for gas");
-                if (self.profitInTime) {
-                    value -= self.commission * (2 + gasMinimum);
-                } else {
-                    value -= self.commission * gasMinimum;
-                }
+                require(self.getStepsCount() < MAX_STEPS, "Max steps");
                 require(value >= self.commission, "Insufficient funds to cover commission");
                 require(self.isActive, "Contract is not active");
                 if (!self.checkTradingAccess()) {
@@ -784,13 +779,7 @@ contract ProofOfCapital with Deployable, Ownable {
                         transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, msg.amount, SendCollateralJettonsToDao{}.toCell(), self.commission * 2, self.commission);
                     }
                 } else {
-                    let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
-                    require(gasMinimum < 20, "Too much value for gas");
-                    if (self.profitInTime) {
-                        require(value >= self.commission * (2 + gasMinimum), "Insufficient funds to cover commission for transfer collateral jettons.");
-                    } else {
-                        require(value >= self.commission * gasMinimum, "Insufficient funds to cover commission for transfer collateral jettons.");
-                    }
+                    require(self.getStepsCount() < MAX_STEPS, "Max steps");
                     if (!self.checkTradingAccess()) {
                         self.updateUnlockWindow();
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
@@ -845,9 +834,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     if(msg.sender != self.dao){
                         self.ownerEarnedLaunchTokens += msg.amount;
                     }
-                    let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevelEarned);
-                    require(gasMinimum < 20, "Too much value for gas");
-                    require(value >= gasMinimum * self.commission, "Amount must be greater than minimal");
+                    require(self.getStepsCount() < MAX_STEPS, "Max steps");
                     let amount: Int = msg.amount;
                     let collateralAmountToPay: Int = 0;
                     let tokensAvailableForReturnBuyback: Int = self.totalJettonsSold - self.jettonsEarned;
@@ -895,9 +882,7 @@ contract ProofOfCapital with Deployable, Ownable {
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
 
-                    let gasMinimum = 4 + msg.amount / (4 * self.quantityJettonsPerLevel);
-                    require(gasMinimum < 20, "Too much value for gas");
-                    require(value >= gasMinimum * self.commission, "Amount must be greater than minimal");
+                    require(self.getStepsCount() < MAX_STEPS, "Max steps");
 
                     let tokensAvailableForBuyback: Int = self.totalJettonsSold - max(self.offsetJettons, self.jettonsEarned);
                     let tokenForBuyback: Int = msg.amount;
@@ -1200,7 +1185,42 @@ contract ProofOfCapital with Deployable, Ownable {
         self.controlDay += periodsToAdd * THIRTY_DAYS;
     }
 
-
+    // Returns the number of levels to calculate
+    fun getStepsCount(): Int {
+        let totalJettonsSum = (self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
+        if (self.currentStep < self.trendChangeStep) { //смотрим, текущий шаг до или после смены тренда
+            // если до смены тренда, смотрим, сколько осталось шагов до смены
+            let stepsRemaining: Int = self.trendChangeStep - self.currentStep;
+            if (stepsRemaining > MAX_STEPS) { //если до смены осталось больше 50 шагов
+                //  то считаем максимальную границу по формуле
+                let q = (1 + self.priceIncrementMultiplier) * (1 + self.levelIncreaseMultiplier);
+                if (q > 1) {
+                    return totalJettonsSum * pow(q, stepsRemaining - 1) / (q - 1);
+                }
+                return totalJettonsSum * (1 - pow(q, stepsRemaining - 1)) / (1 - q);   
+            } else {
+                // если до смены осталось меньше 50 шагов, то считаем максимальную границу как сумму двух сумм, одну до смены тренда,
+                // и другой после смены на оставшееся до 50 шагов значение.
+                let qBeforeTrend = (1 + self.priceIncrementMultiplier) * (1 + self.levelIncreaseMultiplier);
+                let sumBeforeTrend = (qBeforeTrend > 1) 
+                    ? totalJettonsSum * pow(qBeforeTrend, stepsRemaining - 1) / (qBeforeTrend - 1)
+                    : totalJettonsSum * (1 - pow(qBeforeTrend, stepsRemaining - 1)) / (1 - qBeforeTrend);
+                let stepsAfterTrendChange = MAX_STEPS - stepsRemaining;
+                let qAfterTrend = (1 - self.priceIncrementMultiplier) * (1 - self.levelDecreaseMultiplierAfterTrend);
+                let sumAfterTrendChange = (qAfterTrend > 1) 
+                    ? totalJettonsSum * pow(qAfterTrend, stepsAfterTrendChange - 1) / (qAfterTrend - 1)
+                    : totalJettonsSum * (1 - pow(qAfterTrend, stepsAfterTrendChange - 1)) / (1 - qAfterTrend);
+                return sumBeforeTrend + sumAfterTrendChange;
+            }
+        } else {
+            // After trend change
+            let q = (1 - self.priceIncrementMultiplier) * (1 - self.levelDecreaseMultiplierAfterTrend);
+            let sumAfterTrendChange = (q > 1) 
+                ? totalJettonsSum * pow(q, MAX_STEPS - 1) / (q - 1)
+                : totalJettonsSum * (1 - pow(q, MAX_STEPS - 1)) / (1 - q);
+            return sumAfterTrendChange;
+        }
+    }
 
     // Returns the profit percentage depending on the current step and the trend change step.
     fun calculateProfit(currentStep: Int): Int {
