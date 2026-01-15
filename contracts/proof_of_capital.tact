@@ -684,7 +684,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 require(self.isActive, "Contract is not active");
                 if (!self.checkTradingAccess()) {
                     self.updateUnlockWindow();
-                    require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
+                    require(self.marketMakerAddressesMap.exists(sender()) || sender() == self.returnWalletAddress, "Now can trade only MarketMaker or Return wallet and this address is not a MarketMaker");
                 }
                 require(value >= self.commission * 2, "Insufficient funds to cover commission");
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
@@ -782,7 +782,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     require(self.getStepsCount() < MAX_STEPS, "Max steps");
                     if (!self.checkTradingAccess()) {
                         self.updateUnlockWindow();
-                        require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
+                        require(self.marketMakerAddressesMap.exists(msg.sender) || msg.sender == self.returnWalletAddress, "Now can trade only MarketMaker or Return wallet and this address is not a MarketMaker");
                     }
 
                     let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(msg.amount);
