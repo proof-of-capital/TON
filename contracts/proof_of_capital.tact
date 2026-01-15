@@ -575,7 +575,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Adds a new market maker address to the map if it is not already present.
     receive(msg: AddMarketMakerAddresses) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(self.dao != newAddress(0, 0) && sender() == self.dao, "Access is only for the dao");
         require((!self.oldContractAddressesMap.exists(msg.newMarketMakerAddresse)), "Old contract address cannot be equal to any of addresses in contract");
         if (!self.marketMakerAddressesMap.exists(msg.newMarketMakerAddresse)) {
             require(
@@ -602,7 +602,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Removes a market maker address from the map if it exists.
     receive(msg: DeleteMarketMakerAddresses) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(self.dao != newAddress(0, 0) && sender() == self.dao, "Access is only for the dao");
         if (!self.marketMakerAddressesMap.exists(msg.delMarketMakerAddresse)) {
             self.notify("Market maker address does not exist".asComment());
         } else {
