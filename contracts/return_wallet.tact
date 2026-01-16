@@ -58,6 +58,18 @@ message(0x9) ChangeMarketMaker {
     newMarketMaker: Address;
 }
 
+message(0xa) SetReturnWalletAddress {
+    newReturnWalletAddress: Address;
+}
+
+message(0xb) UpdateRoyaltyWalletOnPoc {
+    pokAddress: Address;
+}
+
+message(0xc) BlockDeferredWithdrawalOnPoc {
+    pokAddress: Address;
+}
+
 contract ReturnWallet with Deployable {
     owner: Address;
     dao: Address;
@@ -67,19 +79,23 @@ contract ReturnWallet with Deployable {
     launchJettonWalletAddress: Address = newAddress(0, 0);
     launchJettonBalance: Int as coins = 0;
 
-    collateralAllowedAddresses: Map<Address, Bool>; // Map of collateral allowed addresses (k - address, v - is allowed)
-    collateralWalletAddresses: Map<Address, Address>; // Map of collateral jetton wallet addresses (k - master wallet, v - RW wallet address  )
+    collateralAllowedAddresses: map<Address, Bool>; // Map of collateral allowed addresses (k - address, v - is allowed)
+    collateralWalletAddresses: map<Address, Address>; // Map of collateral jetton wallet addresses (k - master wallet, v - RW wallet address  )
     
-    pokActiveStatuses: Map<Address, Bool>; // Map of pok addresses (k - pok address, v - is active)
-    pokLockDates: Map<Address, Int as uint64>; // Map of pok addresses (k - pok address, v - lock date)
-    pokCollateralAddresses: Map<Address, Address>; // Map of pok addresses (k - pok address, v - collateral jetton master address)
-    pokSharePercentages: Map<Address, Int as uint16>; // Map of pok addresses (k - pok address, v - share percentage)
+    pokActiveStatuses: map<Address, Bool>; // Map of pok addresses (k - pok address, v - is active)
+    pokLockDates: map<Address, Int as uint64>; // Map of pok addresses (k - pok address, v - lock date)
+    pokCollateralAddresses: map<Address, Address>; // Map of pok addresses (k - pok address, v - collateral jetton master address)
+    pokSharePercentages: map<Address, Int as uint16>; // Map of pok addresses (k - pok address, v - share percentage)
     pokCount: Int as uint8 = 0;
 
-    init(marketMaker: Address){
+    newReturnWalletAddress: Address = newAddress(0, 0);
+    isRoyaltyChangeEnabled: Bool = false;
+
+    init(launchJettonMasterAddress: Address, marketMaker: Address){
         self.owner = sender();
-        self.dao = msg.dao;
-        self.marketMaker = msg.marketMaker;
+        self.dao = sender();
+        self.marketMaker = marketMaker;
+        self.launchJettonMasterAddress = launchJettonMasterAddress;
     }
 
 
@@ -99,10 +115,9 @@ contract ReturnWallet with Deployable {
     receive(msg: GetContractInfoAfterUpdatePoc){
         require(self.pokActiveStatuses.exists(sender()), "Invalid sender");
         self.pokActiveStatuses.set(sender(), msg.isActive);
-        self.pokLockDates.set(sender(), msg.lockDate);
         self.pokCollateralAddresses.set(sender(), msg.jettonCollateralAddress);
         self.collateralAllowedAddresses.set(msg.jettonCollateralAddress, true);
-        self.pokCount++;
+        self.pokCount+=1;
         message(MessageParameters{
             to: msg.jettonCollateralAddress,
             value: COMMISSION,
@@ -153,7 +168,7 @@ contract ReturnWallet with Deployable {
         }else{
             require(self.collateralWalletAddresses.exists(msg.collateralMasterAddress), "Collateral master address is not found");
             require(self.pokCollateralAddresses.exists(msg.pokAddress) && self.pokCollateralAddresses.get(msg.pokAddress)!! == msg.collateralMasterAddress, "Pok collateral address is not equal to collateral master address");
-            transferTokensTo(self.collateralWalletAddresses.get(msg.collateralMasterAddress), msg.pokAddress, msg.amount, "Transfer collateral to pok");
+            transferTokensTo(self.collateralWalletAddresses.get(msg.collateralMasterAddress)!!, msg.pokAddress, msg.amount, "Transfer collateral to pok");
         }
     }
 
@@ -223,6 +238,7 @@ contract ReturnWallet with Deployable {
     receive(msg: ChangeOwner){
         require(sender() == self.dao, "Access is only for the dao");
         require(msg.newOwner != newAddress(0, 0), "New owner address cannot be null");
+        require(msg.newOwner != self.dao, "New owner address cannot be null");
         self.owner = msg.newOwner;
     }
 
@@ -230,6 +246,43 @@ contract ReturnWallet with Deployable {
         require(sender() == self.dao, "Access is only for the dao");
         require(msg.newMarketMaker != newAddress(0, 0), "New market maker address cannot be null");
         self.marketMaker = msg.newMarketMaker;
+    }
+
+    receive(msg: SetReturnWalletAddress){
+        require(sender() == self.dao, "Access is only for the dao");
+        require(msg.newReturnWalletAddress != newAddress(0, 0), "New return wallet address cannot be null");
+        self.newReturnWalletAddress = msg.newReturnWalletAddress;
+    }
+
+    receive(msg: UpdateRoyaltyWalletOnPoc){
+        require(sender() == self.owner, "Access is only for the owner");
+        require(self.newReturnWalletAddress != newAddress(0, 0), "New return wallet address is not set");
+        require(self.pokActiveStatuses.exists(msg.pokAddress), "POC is not found");
+        require(self.pokActiveStatuses.get(msg.pokAddress)!!, "POC is not active");
+        require(context().value >= COMMISSION, "Insufficient funds to cover commission");
+        
+        // Send ChangeRoyaltyWallet to the specified POC contract
+        message(MessageParameters{
+            to: msg.pokAddress,
+            value: COMMISSION,
+            mode: SendRemainingValue,
+            body: ChangeRoyaltyWallet{newRoyaltyWalletAddress: self.newReturnWalletAddress}.toCell()
+        });
+    }
+
+    receive(msg: BlockDeferredWithdrawalOnPoc){
+        require(sender() == self.owner, "Access is only for the owner");
+        require(self.pokActiveStatuses.exists(msg.pokAddress), "POC is not found");
+        require(self.pokActiveStatuses.get(msg.pokAddress)!!, "POC is not active");
+        require(context().value >= COMMISSION, "Insufficient funds to cover commission");
+        
+        // Send BlockDeferredWithdrawal to the specified POC contract to block/allow deferred withdrawal
+        message(MessageParameters{
+            to: msg.pokAddress,
+            value: COMMISSION,
+            mode: SendRemainingValue,
+            body: BlockDeferredWithdrawal{}.toCell()
+        });
     }
 
     receive(msg: WithdrawAdditionalJettons){
@@ -249,11 +302,15 @@ contract ReturnWallet with Deployable {
 
     fun _isActive(): Bool {
         if (self.pokCount == 0) {
-            return self.isActive;
+            return false;
         }
         
         let maxLockDate: Int = 0;
-        foreach(pokAddress, lockDate in self.pokLockDates){
+        foreach(pokAddress, _ in self.pokActiveStatuses){
+            if(self.pokLockDates.get(pokAddress) == null){
+                return false;
+            }
+            let lockDate = self.pokLockDates.get(pokAddress)!!;
             if (lockDate > maxLockDate) {
                 maxLockDate = lockDate;
             }
@@ -287,7 +344,7 @@ fun transferTokensTo(toAddress: Address, recipient: Address, amount: Int, commen
                 responseDestination: recipient,
                 customPayload: null,
                 forwardTonAmount: 1,
-                forwardPayload: forwardPayload
+                forwardPayload: forwardPayload.asSlice()
             }.toCell(),
     });
 }
