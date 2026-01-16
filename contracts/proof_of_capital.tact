@@ -782,7 +782,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     require(self.getStepsCount() < MAX_STEPS, "Max steps");
                     if (!self.checkTradingAccess()) {
                         self.updateUnlockWindow();
-                        require(self.marketMakerAddressesMap.exists(msg.sender) || msg.sender == self.returnWalletAddress, "Now can trade only MarketMaker or Return wallet and this address is not a MarketMaker");
+                        require(msg.sender == self.returnWalletAddress || self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker or Return wallet and this address is not a MarketMaker");
                     }
 
                     let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(msg.amount);
