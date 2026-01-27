@@ -10,7 +10,7 @@ message(0xd1735400) TakeWalletAddress {
 }
 
 message ExtendLock {
-    additionalTime: Int as uint32;
+    lockTimestamp: Int as uint64;
 }
 
 message(0x7362d09c) JettonTransferNotification {
@@ -46,6 +46,8 @@ message ProposeReturnWalletChange {
 }
 
 message ConfirmReturnWalletChange {}
+
+message CancelReturnWalletChange {}
 
 message WithdrawAllTons {}
 
@@ -92,6 +94,10 @@ message DeleteMarketMakerAddresses {
 
 message ChangeProfitPercentage {
     newRoyaltyProfitPercentage: Int as uint8;
+}
+
+message ChangeMarketMakerProfitPercentage {
+    newMarketMakerProfitPercentage: Int as uint8;
 }
 
 message BlockDeferredWithdrawal { }
@@ -202,6 +208,12 @@ message CollateralBuyback {}
 message TransferAllLaunchJettonsToOwner {}
 
 message SendAllCollateralBalanceToOwner {}
+
+message UpgradeOwnerShare {}
+
+message UpgradeOwnerShareToDao {
+    amount: Int as coins;
+}
 
 message CalculateUnaccountedCollateralBalance {
     queryId: Int as uint64;

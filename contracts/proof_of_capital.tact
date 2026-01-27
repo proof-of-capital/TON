@@ -27,11 +27,11 @@ import "./messages";
 
 const TEN_MINUTES: Int = 600; // 10 minutes (used for lock extension in tests)
 const MIN_CONTROL_PERIOD: Int = 21_600; // 6 hours (minimum duration of the "unlock window" — the period when the contract is open to all)
-const RETURN_WALLET_CHANGE_DELAY: Int = 86_400; // 24 hours delay for return wallet change proposal confirmation
+const RETURN_WALLET_CHANGE_DELAY: Int = 86_400 * 10; // 10 days delay for return wallet change proposal confirmation
 
 const SEVEN_DAYS: Int = 604_800; // 7 days (used as the period for deferred withdrawal)
 const THIRTY_DAYS: Int = 2_592_000; // 30 days before the deferred withdrawal dates for the primary and backing tokens
-const OLD_CONTRACT_UPDATE_PERIOD: Int = 3_456_000; // 40 days minimum period between old contract address updates
+const OLD_CONTRACT_UPDATE_PERIOD: Int = 86400 * 50; // 50 days minimum period between old contract address updates
 const SIXTY_DAYS: Int = 5_184_000; // Starting 60 days before the lock-up ends, any token holders can interact with the contract.
 const NINETY_DAYS: Int = 7_776_000; // 90 days (used for lock extension)
 const ONE_HUNDRED_EIGHTY_TWO_DAYS: Int = 15_724_800; // 182 days (used for lock extension)
@@ -40,9 +40,10 @@ const FIVE_HUNDREDTHS_TON: Int = ton("0.05"); // minimum TON amount for covering
 const COMMISSION_MULTIPLIER: Int = 10; // commission multiplier (used to calculate the remaining contract balance when withdrawing TON equal to 10 times the fee)
 
 const MAX_PERCENT: Int = 1000; // Maximum percentage value
+const MAX_STEPS: Int = 50; // Maximum number of steps
 
 // Limits the given period to a range between MIN_CONTROL_PERIOD and THIRTY_DAYS.
-fun getPeriod(period: Int): Int {
+inline fun getPeriod(period: Int): Int {
     if (period < MIN_CONTROL_PERIOD) {
         period = MIN_CONTROL_PERIOD;
     } else if (period > THIRTY_DAYS) {
@@ -80,6 +81,7 @@ contract ProofOfCapital with Deployable, Ownable {
     contractCollateralBalance: Int as coins; // Balance of collateral jettons
     contractJettonBalance: Int as coins; // Balance of the contract's launch jetton
     jettonsEarned: Int as coins; // Number of earned jettons — these are the jettons returned to the contract from the returnWalletAddress
+    ownerEarnedLaunchTokens: Int as coins; // Number of earned launch tokens by the owner
 
     quantityJettonsPerLevel: Int as coins; // Number of jettons at the current level
     actualProfit: Int as coins; // Actual profit to be distributed between the owner and the royalty wallet
@@ -123,6 +125,7 @@ contract ProofOfCapital with Deployable, Ownable {
     profitInTime: Bool; // Flag indicating whether profit is withdrawn immediately or upon request (true – on request, false – immediately)
     royaltyProfitPercent: Int as uint16; // Royalty profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
     creatorProfitPercent: Int as uint16; // Owner profit percentage (from 1 (0.1 %) to MAX_PERCENT (100 %))
+    marketMakerProfitPercent: Int as uint16; // Market maker profit percentage (from 0 to MAX_PERCENT (100 %))
     profitBeforeTrendChange: Int as uint16; // Profit percentage before trend change (from 1 (0.1 %) to MAX_PERCENT (100 %))
 
     canWithdrawal: Bool = true; // Flag indicating whether early delayed withdrawal is allowed (true – allowed, false – prohibited)
@@ -227,15 +230,17 @@ contract ProofOfCapital with Deployable, Ownable {
         self.royaltyTonBalance = 0;
         self.ownerCollateralBalance = 0;
         self.royaltyCollateralBalance = 0;
+        self.ownerEarnedLaunchTokens = 0;
         self.profitInTime = true;
 
         self.royaltyProfitPercent = royaltyProfitPercent;
         self.creatorProfitPercent = MAX_PERCENT - royaltyProfitPercent;
+        self.marketMakerProfitPercent = 0;
 
         self.recipientDeferredWithdrawalLaunchJetton = owner;
         self.recipientDeferredWithdrawalCollateralJetton = owner;
 
-        self.dao = owner;
+        self.dao = newAddress(0, 0);
 
         require(self.initialPricePerToken > 0, "Initial price must be positive");
         require(self.levelDecreaseMultiplierAfterTrend < MAX_PERCENT, "Multiplier too high");
@@ -288,20 +293,18 @@ contract ProofOfCapital with Deployable, Ownable {
         }
     }
 
-    // Extends the lock for a specified period at the request of the owner. Supported durations are 10 minutes, 3 months, or 6 months.
+    // Extends the lock to a specific timestamp at the request of the owner.
     receive(msg: ExtendLock) {
         require(sender() == self.owner, "Access is only for the owner");
         require(context().value >= self.commission, "Amount must be greater than commission");
-        require(((self.lockEndTime + msg.additionalTime) - now()) < ONE_THOUSAND_EIGHT_HUNDRED_TWENTY_FIVE_DAYS, "Lock end time cannot exceed five years");
-        require(msg.additionalTime == ONE_HUNDRED_EIGHTY_TWO_DAYS || msg.additionalTime == TEN_MINUTES || msg.additionalTime == NINETY_DAYS, "Invalid time!");
-        self.lockEndTime += msg.additionalTime;
-        if (msg.additionalTime == ONE_HUNDRED_EIGHTY_TWO_DAYS) {
-            self.notify("Lock extended for 182 days.".asComment());
-        } else if (msg.additionalTime == TEN_MINUTES) {
-            self.notify("Lock extended for 10 minutes.".asComment());
-        } else {
-            self.notify("Lock extended for 3 months.".asComment());
-        }
+        require(msg.lockTimestamp > now(), "Invalid time period");
+        require(msg.lockTimestamp > self.lockEndTime, "New lock must be greater than old");
+        require(msg.lockTimestamp <= now() + ONE_THOUSAND_EIGHT_HUNDRED_TWENTY_FIVE_DAYS, "Lock cannot exceed five years");
+        self.lockEndTime = msg.lockTimestamp;
+        let notification: StringBuilder = beginString();
+        notification.append("Lock extended until ");
+        notification.append(msg.lockTimestamp.toString());
+        self.notify(notification.toString().asComment());
     }
 
     // Locks the ability of the owner to withdraw funds if they want to waive this right during the lock period.
@@ -350,7 +353,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Confirms and executes the deferred withdrawal of launch jettons after the waiting period expires.
     receive(msg: ConfirmJettonDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value >= self.commission * 6, "Insufficient funds to cover commission for transfer profit");
+        require(context().value >= self.commission * 3, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.launchJettonDeferredWithdrawalDate != 0, "Launch jetton deferred withdrawal date is not set or reset");
         require(now() >= self.launchJettonDeferredWithdrawalDate, "Launch jetton deferred withdrawal date is not arrived yet");
@@ -358,7 +361,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
         let amount: Int = min(self.launchJettonDeferredWithdrawalAmount, self.contractJettonBalance - self.totalJettonsSold);
         if (amount > 0) {
-            self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalLaunchJetton, amount, LaunchJettonDeferredWithdrawal{}.toCell(), self.commission * 5, self.commission * 4);
+            transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.recipientDeferredWithdrawalLaunchJetton, amount, LaunchJettonDeferredWithdrawal{}.toCell(), self.commission * 2, self.commission);
         }
         
         self.contractJettonBalance -= amount;
@@ -397,14 +400,14 @@ contract ProofOfCapital with Deployable, Ownable {
     // Confirms and executes the deferred withdrawal of collateral jettons after the waiting period expires.
     receive(msg: ConfirmCollateralDeferredWithdrawal) {
         require(sender() == self.owner, "Access is only for the owner");
-        require(context().value >= self.commission * 6, "Insufficient funds to cover commission for transfer profit");
+        require(context().value >= self.commission * 3, "Insufficient funds to cover commission for transfer profit");
         require(self.canWithdrawal, "Deferred withdrawal is blocked");
         require(self.collateralJettonDeferredWithdrawalDate != 0, "Collateral jetton deferred withdrawal date is not set or reset");
         require(now() >= self.collateralJettonDeferredWithdrawalDate, "Collateral jetton deferred withdrawal date is not arrived yet");
         require(now() <= self.collateralJettonDeferredWithdrawalDate + SEVEN_DAYS, "Collateral jetton deferred withdrawal period is finished");
 
         if (self.jettonCollateral) {
-            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalCollateralJetton, self.contractCollateralBalance, CollateralJettonDeferredWithdrawal{}.toCell(), self.commission * 5, self.commission * 4);
+            transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.recipientDeferredWithdrawalCollateralJetton, self.contractCollateralBalance, CollateralJettonDeferredWithdrawal{}.toCell(), self.commission * 2, self.commission);
         } else {
             message(MessageParameters{
                 to: self.recipientDeferredWithdrawalCollateralJetton,
@@ -430,9 +433,6 @@ contract ProofOfCapital with Deployable, Ownable {
         require((!self.oldContractAddressesMap.exists(msg.newOwner)), "Old contract address cannot be equal to any of addresses in contract");
         if (self.owner == self.reserveOwner) {
             self.reserveOwner = msg.newOwner;
-        }
-        if (self.owner == self.dao) {
-            self.dao = msg.newOwner;
         }
         self.owner = msg.newOwner;
         self.notify("Owner assigned".asComment());
@@ -466,7 +466,7 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: ChangeCommissionValue) {
         require(context().value >= self.commission, "Insufficient funds to cover commission");
         require(sender() == self.owner, "Access is only for the owner");
-        require(msg.commissionValue >= FIVE_HUNDREDTHS_TON && msg.commissionValue <= ton("10"), "Amount must be between 0.05 and 10 TON");
+        require(msg.commissionValue >= FIVE_HUNDREDTHS_TON && msg.commissionValue <= ton("1"), "Amount must be between 0.05 and 10 TON");
         self.commission = msg.commissionValue;
         self.notify("Commission value changed".asComment());
     }
@@ -511,6 +511,16 @@ contract ProofOfCapital with Deployable, Ownable {
         self.notify("Return wallet address changed".asComment());
     }
 
+    // Cancels the proposed return wallet address change. Access is allowed only for the royalty wallet address.
+    receive(msg: CancelReturnWalletChange) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
+        require(sender() == self.royaltyWalletAddress || sender() == self.dao, "Access is only for royalty");
+        require(self.proposedReturnWalletAddress != null, "No return wallet address change proposal exists");
+        self.proposedReturnWalletAddress = null;
+        self.proposedReturnWalletChangeTime = 0;
+        self.notify("Return wallet address change proposal cancelled".asComment());
+    }
+
     // Updates the royalty wallet address. Access is allowed only for the current royalty address.
     receive(msg: ChangeRoyaltyWallet) {
         require(context().value >= self.commission, "Insufficient funds to cover commission");
@@ -539,6 +549,15 @@ contract ProofOfCapital with Deployable, Ownable {
         self.notify("Profit percentage changed".asComment());
     }
 
+    // Changes the market maker profit percentage. Access is allowed only for the owner.
+    receive(msg: ChangeMarketMakerProfitPercentage) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission");
+        require(sender() == self.owner, "Access is only for the owner");
+        require((msg.newMarketMakerProfitPercentage >= 0 && msg.newMarketMakerProfitPercentage <= MAX_PERCENT), "Incorrect value of the market maker profit");
+        self.marketMakerProfitPercent = msg.newMarketMakerProfitPercentage;
+        self.notify("Market maker profit percentage changed".asComment());
+    }
+
     // Updates the additional jetton addresses and transfers the specified amount to the dao.
     // Verifies the uniqueness and validity of the new addresses.
     // Intended for withdrawing third-party jettons mistakenly sent to the contract.
@@ -551,14 +570,28 @@ contract ProofOfCapital with Deployable, Ownable {
             require(msg.newAdditionalJettonWalletAddress != self.contractLaunchJettonWalletAddress, "Additional jetton wallet address in message cannot be launch jetton wallet");
         }
         self.additionalJettonWalletAddress = msg.newAdditionalJettonWalletAddress;
-        self.transferTokensToWithPayload(self.additionalJettonWalletAddress, self.dao, msg.amount, SendOtherJettonsToDao{}.toCell(), self.commission * 2, self.commission);
+        transferTokensToWithPayload(self.additionalJettonWalletAddress, self.dao, msg.amount, SendOtherJettonsToDao{}.toCell(), self.commission * 2, self.commission);
     }
 
     // Adds a new market maker address to the map if it is not already present.
     receive(msg: AddMarketMakerAddresses) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(self.dao != newAddress(0, 0) && sender() == self.dao, "Access is only for the dao");
         require((!self.oldContractAddressesMap.exists(msg.newMarketMakerAddresse)), "Old contract address cannot be equal to any of addresses in contract");
         if (!self.marketMakerAddressesMap.exists(msg.newMarketMakerAddresse)) {
+            require(
+                msg.newMarketMakerAddresse != self.owner &&
+                msg.newMarketMakerAddresse != self.reserveOwner &&
+                msg.newMarketMakerAddresse != self.launchJettonMasterAddress &&
+                msg.newMarketMakerAddresse != self.contractLaunchJettonWalletAddress &&
+                msg.newMarketMakerAddresse != self.additionalJettonWalletAddress &&
+                msg.newMarketMakerAddresse != self.jettonCollateralMasterAddress &&
+                msg.newMarketMakerAddresse != self.contractJettonCollateralWalletAddress &&
+                msg.newMarketMakerAddresse != self.returnWalletAddress &&
+                msg.newMarketMakerAddresse != self.royaltyWalletAddress &&
+                msg.newMarketMakerAddresse != self.recipientDeferredWithdrawalLaunchJetton &&
+                msg.newMarketMakerAddresse != self.recipientDeferredWithdrawalCollateralJetton,
+                "New market maker cannot be equal to any of addresses in contract"
+            );
             require(self.marketMakerAddressesLength < 256, "Too much market makers");
             self.marketMakerAddressesLength += 1;
             self.marketMakerAddressesMap.set(msg.newMarketMakerAddresse, true);
@@ -569,11 +602,11 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Removes a market maker address from the map if it exists.
     receive(msg: DeleteMarketMakerAddresses) {
-        require(sender() == self.owner, "Access is only for the owner");
+        require(self.dao != newAddress(0, 0) && sender() == self.dao, "Access is only for the dao");
         if (!self.marketMakerAddressesMap.exists(msg.delMarketMakerAddresse)) {
             self.notify("Market maker address does not exist".asComment());
         } else {
-            self.marketMakerAddressesMap.del(msg.delMarketMakerAddresse);
+            let _ = self.marketMakerAddressesMap.del(msg.delMarketMakerAddresse);
             self.marketMakerAddressesLength -= 1;
         }
     }
@@ -630,7 +663,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // Then updates the contract balance and sends jettons to the sender.
 
     receive() {
-        if (self.jettonCollateral && (sender() == self.owner || sender() == self.oldContractAddress)) {
+        if (self.jettonCollateral && sender() == self.owner) {
             require(self.jettonCollateral, "Jetton collateral is not used.");
         } else {
             require(self.isInitialized, "Contract jetton wallets are not initialized yet");
@@ -646,26 +679,23 @@ contract ProofOfCapital with Deployable, Ownable {
             } else {
                 let value = context().value - 4 * self.commission;
                 require(value >= self.commission, "Insufficient funds to cover commission");
-                let gasMinimum = value / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
-                require(gasMinimum < 20, "Too much value for gas");
-                if (self.profitInTime) {
-                    value -= self.commission * (2 + gasMinimum);
-                } else {
-                    value -= self.commission * gasMinimum;
-                }
+                require(self.getStepsCount() < MAX_STEPS, "Max steps");
                 require(value >= self.commission, "Insufficient funds to cover commission");
                 require(self.isActive, "Contract is not active");
                 if (!self.checkTradingAccess()) {
-                    if (self.checkUnlockWindow()) {
-                        self.controlDay += THIRTY_DAYS;
-                    }
-                    require(self.marketMakerAddressesMap.exists(sender()), "Now can trade only MarketMaker and this address is not a MarketMaker");
+                    self.updateUnlockWindow();
+                    require(self.marketMakerAddressesMap.exists(sender()) || sender() == self.returnWalletAddress, "Now can trade only MarketMaker or Return wallet and this address is not a MarketMaker");
                 }
                 require(value >= self.commission * 2, "Insufficient funds to cover commission");
                 require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance");
 
                 let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(value - self.commission * 2);
                 let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
+                let mmProfit = 0;
+                if(self.lockEndTime > now()){
+                    mmProfit = creatorProfit * self.marketMakerProfitPercent / MAX_PERCENT;
+                    creatorProfit -= mmProfit;
+                }
                 let royaltyProfit: Int = self.actualProfit - creatorProfit;
 
                 if (self.profitInTime) {
@@ -693,7 +723,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 self.contractCollateralBalance += netValue;
                 self.totalJettonsSold += totalTokens;
 
-                self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, sender(), totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission + mmProfit);
             }
         }
     }
@@ -746,32 +776,24 @@ contract ProofOfCapital with Deployable, Ownable {
                     if (self.offsetJettons > self.jettonsEarned) {
                         self.unaccountedCollateralBalance += msg.amount;
                     } else {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, msg.amount, SendCollateralJettonsToDao{}.toCell(), self.commission * 2, self.commission);
+                        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, msg.amount, SendCollateralJettonsToDao{}.toCell(), self.commission * 2, self.commission);
                     }
                 } else {
-                    let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
-                    require(gasMinimum < 20, "Too much value for gas");
-                    if (self.profitInTime) {
-                        require(value >= self.commission * (2 + gasMinimum), "Insufficient funds to cover commission for transfer collateral jettons.");
-                    } else {
-                        require(value >= self.commission * gasMinimum, "Insufficient funds to cover commission for transfer collateral jettons.");
-                    }
+                    require(self.getStepsCount() < MAX_STEPS, "Max steps");
                     if (!self.checkTradingAccess()) {
-                        if (self.checkUnlockWindow()) {
-                            self.controlDay += THIRTY_DAYS;
-                        }
-                        require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
+                        self.updateUnlockWindow();
+                        require(msg.sender == self.returnWalletAddress || self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker or Return wallet and this address is not a MarketMaker");
                     }
-                    require(self.contractJettonBalance > self.totalJettonsSold, "Insufficient jetton balance.");
 
                     let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(msg.amount);
+                    require(self.contractJettonBalance > totalTokens, "Insufficient jetton balance.");
                     let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
                     let royaltyProfit: Int = self.actualProfit - creatorProfit;
                     let netValue: Int = msg.amount - self.actualProfit;
 
                     if (self.profitInTime) {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.royaltyWalletAddress, royaltyProfit, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission);
+                        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.royaltyWalletAddress, royaltyProfit, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
+                        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.owner, creatorProfit, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission);
                     } else {
                         self.ownerCollateralBalance += creatorProfit;
                         self.royaltyCollateralBalance += royaltyProfit;
@@ -779,7 +801,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     self.contractCollateralBalance += netValue;
                     self.totalJettonsSold += totalTokens;
-                    self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
+                    transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, totalTokens, PurchaseIsSuccess{}.toCell(), self.commission * 2, self.commission );
 
                 }
             } catch (error) {
@@ -787,7 +809,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 errorComment.append("Something went wrong (");
                 errorComment.append(error.toString());
                 errorComment.append(")");
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, msg.amount, errorComment.toCell(), self.commission * 2, self.commission);
+                transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, msg.amount, errorComment.toCell(), self.commission * 2, self.commission);
             }
         } else {
             try {
@@ -797,21 +819,22 @@ contract ProofOfCapital with Deployable, Ownable {
                         self.contractJettonBalance += msg.amount;
                         self.isFirstPurchase = false;
                     } else {
-                        if (self.totalJettonsSold == self.offsetJettons && (self.offsetJettons - self.jettonsEarned) >= msg.amount) {
-                            
-                            let gasMinimum = 2 + msg.amount / (5 * self.sizeOffsetStep);
-                            require(gasMinimum < 20, "Too much value for gas");
-                            require(value >= gasMinimum * self.commission, "Amount of TON must be greater than minimal");
+                        let availableCapacity: Int = self.offsetJettons - self.jettonsEarned;
+                        if (availableCapacity > self.unaccountedOffsetJettonBalance) {
+                            let remainingCapacity = availableCapacity - self.unaccountedOffsetJettonBalance;
+                            let newAmount = msg.amount < remainingCapacity ? msg.amount : remainingCapacity;
                             // Accumulate offset jetton balance for gradual processing
-                            self.unaccountedOffsetJettonBalance += msg.amount;
+                            self.unaccountedOffsetJettonBalance += msg.amount - newAmount;
+                            self.isInitialized = false;
                         } else {
                             self.contractJettonBalance += msg.amount;
                         }
                     }
-                } else if (msg.sender == self.returnWalletAddress) {
-                    let gasMinimum = 4 + msg.amount / (5 * self.quantityJettonsPerLevelEarned);
-                    require(gasMinimum < 20, "Too much value for gas");
-                    require(value >= gasMinimum * self.commission, "Amount must be greater than minimal");
+                } else if (msg.sender == self.returnWalletAddress || msg.sender == self.dao) {
+                    if(msg.sender != self.dao){
+                        self.ownerEarnedLaunchTokens += msg.amount;
+                    }
+                    require(self.getStepsCount() < MAX_STEPS, "Max steps");
                     let amount: Int = msg.amount;
                     let collateralAmountToPay: Int = 0;
                     let tokensAvailableForReturnBuyback: Int = self.totalJettonsSold - self.jettonsEarned;
@@ -824,13 +847,11 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     if (self.offsetJettons > self.jettonsEarned) {
                         if (effectiveAmount > self.offsetJettons - self.jettonsEarned) {
-                            // @misti:suppress UnusedExpressionResult
-                            self.calculateCollateralForTokenAmountEarned(self.offsetJettons - self.jettonsEarned);
+                            let _ = self.calculateCollateralForTokenAmountEarned(self.offsetJettons - self.jettonsEarned);
                             let buybackAmount: Int = effectiveAmount - (self.offsetJettons - self.jettonsEarned);
                             collateralAmountToPay = self.calculateCollateralForTokenAmountEarned(buybackAmount);
                         } else {
-                            // @misti:suppress UnusedExpressionResult
-                            self.calculateCollateralForTokenAmountEarned(effectiveAmount);
+                            let _ =self.calculateCollateralForTokenAmountEarned(effectiveAmount);
                             collateralAmountToPay = 0;
                         }
                     } else {
@@ -844,7 +865,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                     if (collateralAmountToPay > 0) {
                         if (self.jettonCollateral) {
-                            self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, collateralAmountToPay, PriceGrowthBuyback{}.toCell(), self.commission * 2, self.commission);
+                            transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, collateralAmountToPay, PriceGrowthBuyback{}.toCell(), self.commission * 2, self.commission);
                         } else {
                             message(MessageParameters{
                                 to: self.dao,
@@ -857,15 +878,11 @@ contract ProofOfCapital with Deployable, Ownable {
                     }
                 } else {
                     if (!self.checkTradingAccess()) {
-                        if (self.checkUnlockWindow()) {
-                            self.controlDay += THIRTY_DAYS;
-                        }
+                        self.updateUnlockWindow();
                         require(self.marketMakerAddressesMap.exists(msg.sender), "Now can trade only MarketMaker and this address is not a MarketMaker");
                     }
 
-                    let gasMinimum = 4 + msg.amount / (4 * self.quantityJettonsPerLevel);
-                    require(gasMinimum < 20, "Too much value for gas");
-                    require(value >= gasMinimum * self.commission, "Amount must be greater than minimal");
+                    require(self.getStepsCount() < MAX_STEPS, "Max steps");
 
                     let tokensAvailableForBuyback: Int = self.totalJettonsSold - max(self.offsetJettons, self.jettonsEarned);
                     let tokenForBuyback: Int = msg.amount;
@@ -878,7 +895,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     self.totalJettonsSold -= tokenForBuyback;
 
                     if (self.jettonCollateral) {
-                        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, collateralAmountToPay, CollateralBuyback{}.toCell(), self.commission * 2, self.commission);
+                        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, msg.sender, collateralAmountToPay, CollateralBuyback{}.toCell(), self.commission * 2, self.commission);
                     } else {
                         message(MessageParameters{
                             to: msg.sender,
@@ -894,7 +911,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 errorComment.append("Something went wrong (");
                 errorComment.append(error.toString());
                 errorComment.append(")");
-                self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, msg.amount, errorComment.toCell(), self.commission * 2, self.commission);
+                transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, msg.sender, msg.amount, errorComment.toCell(), self.commission * 2, self.commission);
             }
         }
     }
@@ -902,9 +919,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
     receive(msg: CalculateUnaccountedCollateralBalance) {
         if (!self.checkTradingAccess()) {
-            if (self.checkUnlockWindow()) {
-                self.controlDay += THIRTY_DAYS;
-            }
+            self.updateUnlockWindow();
             require(sender() == self.owner, "Access is only for the owner");
         }
 
@@ -916,7 +931,7 @@ contract ProofOfCapital with Deployable, Ownable {
         let change = msg.amount - deltaCollateralBalance;
         if (change > 0) {
             if (self.jettonCollateral) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, change, SendChangeToDao{}.toCell(), self.commission * 2, self.commission);
+                transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, change, SendChangeToDao{}.toCell(), self.commission * 2, self.commission);
             } else {
                 message(MessageParameters{
                     to: self.dao,
@@ -929,12 +944,16 @@ contract ProofOfCapital with Deployable, Ownable {
         }
     }
 
+    fun checkAndSetInitialized() {
+        if (self.unaccountedOffsetBalance == 0 && self.unaccountedOffsetJettonBalance == 0) {
+            self.isInitialized = true;
+        }
+    }
+
     // Calculates unaccounted offset balance in parts
     receive(msg: CalculateUnaccountedOffsetBalance) {
         if (!self.checkTradingAccess()) {
-            if (self.checkUnlockWindow()) {
-                self.controlDay += THIRTY_DAYS;
-            }
+            self.updateUnlockWindow();
             require(sender() == self.owner, "Access is only for the owner");
         }        
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset balance");
@@ -949,31 +968,31 @@ contract ProofOfCapital with Deployable, Ownable {
         self.calculateOffset(msg.amount);
         self.unaccountedOffsetBalance -= msg.amount;
         
-        // Check if all offset has been processed
-        if (self.unaccountedOffsetBalance == 0) {
-            self.isInitialized = true;
-        }
+        self.checkAndSetInitialized();
     }
 
     // Calculates unaccounted offset jetton balance in parts (gradual processing)
     receive(msg: CalculateUnaccountedOffsetJetton) {
         if (!self.checkTradingAccess()) {
-            if (self.checkUnlockWindow()) {
-                self.controlDay += THIRTY_DAYS;
-            }
+            self.updateUnlockWindow();
             require(sender() == self.owner, "Access is only for the owner");
         }
         require(context().value >= self.commission * 3, "Insufficient funds to cover commission for calculate unaccounted offset jetton balance");
         require(self.unaccountedOffsetJettonBalance >= msg.amount, "Insufficient unaccounted offset jetton balance");
-        // @misti:suppress UnusedExpressionResult
-        self.calculateChangeOffsetJetton(msg.amount);
+        let _ = self.calculateChangeOffsetJetton(msg.amount);
         self.unaccountedOffsetJettonBalance -= msg.amount;
+        self.checkAndSetInitialized();
     }   
         
 
     // You can use DAO for launch and manage your contract. Read more about this on https://tokens.family
-    receive(msg: SetDao) {
-        require(sender() == self.dao, "Access is only for the dao");
+    receive(msg: SetDao){
+        if(self.dao == newAddress(0, 0)){
+            require(sender() == self.owner, "Access is only for the owner");
+        } else {
+            require(sender() == self.dao, "Access is only for the dao");
+        }
+        
         self.dao = msg.dao;
     }
 
@@ -984,7 +1003,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(sender() == self.dao, "Access is only for the dao");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
-        self.transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.dao, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
+        transferTokensToWithPayload(self.contractLaunchJettonWalletAddress, self.dao, self.contractJettonBalance - self.totalJettonsSold, TransferAllLaunchJettonsToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractJettonBalance = 0;
         self.isActive = false;
     }
@@ -997,9 +1016,24 @@ contract ProofOfCapital with Deployable, Ownable {
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         require(self.jettonCollateral, "Jetton collateral is not used.");
-        self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission);
+        transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, self.dao, self.contractCollateralBalance, SendAllCollateralBalanceToOwner{}.toCell(), self.commission * 2, self.commission);
         self.contractCollateralBalance = 0;
         self.isActive = false;
+    }
+
+    // Upgrades owner share by transferring earned launch tokens to DAO.
+    receive(msg: UpgradeOwnerShare) {
+        require(sender() == self.dao, "Access is only for the dao");
+        let amount: Int = self.ownerEarnedLaunchTokens;
+        require(amount > 0, "Invalid amount");
+        require(context().value >= self.commission * 2, "Insufficient funds to cover commission");
+        message(MessageParameters{
+            to: self.dao,
+            value: self.commission,
+            mode: SendIgnoreErrors | SendPayFwdFeesSeparately,
+            body: UpgradeOwnerShareToDao{amount:amount}.toCell(),
+        });
+        self.ownerEarnedLaunchTokens = 0;
     }
 
     // Transfers the entire available TON balance to the owner after the lock period ends.
@@ -1008,11 +1042,16 @@ contract ProofOfCapital with Deployable, Ownable {
     receive(msg: WithdrawAllTons) {
         require(sender() == self.dao, "Access is only for the dao");
         require(now() >= self.lockEndTime, "Lock period has not ended yet!");
-        let amount: Int = myBalance() - context().value - self.commission;
-        self.notify(PaybackToDao{}.toCell());
-
         self.contractCollateralBalance = 0;
         self.isActive = false;
+        let toLeaveOnBalance = (myBalance() - context().value + self.commission) + myStorageDue();
+        nativeReserve(toLeaveOnBalance, ReserveAtMost);
+        message(MessageParameters{
+            to: self.dao,
+            value: 0,
+            mode: SendIgnoreErrors | SendRemainingBalance,
+            body: PaybackToDao{}.toCell(),
+        });
     }
 
     // Sends unused TON to the dao.
@@ -1040,7 +1079,7 @@ contract ProofOfCapital with Deployable, Ownable {
         require(context().value >= self.commission * 2, "Insufficient funds to cover commission for transfer profit");
         if (sender() == self.owner()) {
             if (self.jettonCollateral) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.ownerCollateralBalance, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission );
+                transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.ownerCollateralBalance, SendProfitToTheOwner{}.toCell(), self.commission * 2, self.commission );
                 self.ownerCollateralBalance = 0;
             } else {
                 message(MessageParameters{
@@ -1055,7 +1094,7 @@ contract ProofOfCapital with Deployable, Ownable {
         } else {
             require(sender() == self.royaltyWalletAddress, "Access is only for current owner or royalty wallet");
             if (self.jettonCollateral) {
-                self.transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.royaltyCollateralBalance, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
+                transferTokensToWithPayload(self.contractJettonCollateralWalletAddress, sender(), self.royaltyCollateralBalance, SendProfitToRoyalty{}.toCell(), self.commission * 2, self.commission);
                 self.royaltyCollateralBalance = 0;
             } else {
                  message(MessageParameters{
@@ -1099,7 +1138,11 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
     // Checks if the current time is within the controlled period after controlDay.
-    fun checkControlDay(): Bool {
+    inline fun checkControlDay(): Bool {
+        if(now()<self.controlDay) {
+            return false;
+        }
+        
         let timeSinceControlDay: Int = now() - self.controlDay;
         // Check if we are in the current window
         if (timeSinceControlDay < self.controlPeriod) {
@@ -1116,39 +1159,68 @@ contract ProofOfCapital with Deployable, Ownable {
         return (self.launchJettonDeferredWithdrawalDate > 0) || (self.collateralJettonDeferredWithdrawalDate > 0) || self.lockEndTime - SIXTY_DAYS < now() || self.checkControlDay();
     }
 
-    // Helper function to check if the current time is within the "unlock window" period after the lock expires.
-    // Accounts for the fact that we might be in one of the following windows, not the current one.
-    fun checkUnlockWindow(): Bool {
-        let timeSinceControlDay: Int = now() - self.controlDay;
-        // If more than controlPeriod has passed since the last controlDay, we are not in the current window
-        if (timeSinceControlDay > self.controlPeriod) {
-            // Check if we are in one of the following windows (every 30 days)
-            let periodsSinceControlDay: Int = timeSinceControlDay / THIRTY_DAYS;
-            let timeInCurrentPeriod: Int = timeSinceControlDay - (periodsSinceControlDay * THIRTY_DAYS);
-            // If we are still not in a window, return true (need to add 30 days)
-            return timeInCurrentPeriod > self.controlPeriod;
+    // Helper function to check if controlDay needs to be updated.
+    // Returns true if updateUnlockWindow() would modify controlDay, false otherwise.
+    inline fun checkUnlockWindow(): Bool {
+        // If controlDay is already in the future, no update needed
+        if (now() < self.controlDay) {
+            return false;
         }
-        return false;
+        // controlDay needs to be updated
+        return true;
     }
 
-    // Sends the specified amount of jettons with a comment to the given address.
-    fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell, value: Int, forwardTonAmount: Int) {
+    // Updates the unlock window by shifting controlDay to the nearest future period.
+    fun updateUnlockWindow() {
+        // If controlDay is already in the future, no update needed
+        if (now() < self.controlDay) {
+            return;
+        }
+        
+        // Calculate how many 30-day periods fit between controlDay and current time
+        let timeSinceControlDay: Int = now() - self.controlDay;
+        let periodsToAdd: Int = (timeSinceControlDay / THIRTY_DAYS) + 1;
+        
+        // Shift controlDay to the nearest future period
+        self.controlDay += periodsToAdd * THIRTY_DAYS;
+    }
 
-        let forwardPayload = beginCell().storeBit(false).storeSlice(payload.asSlice()).asSlice();
-        message(MessageParameters{
-            to: toAddress,
-            value: value,
-            body: JettonTransfer{
-                queryId: now(),
-                amount: amount,
-                destination: recipient,
-                responseDestination: recipient,
-                customPayload: null,
-                forwardTonAmount: forwardTonAmount,
-                forwardPayload: forwardPayload,
-            }.toCell(),
-        });
-    }   
+    // Returns the number of levels to calculate
+    fun getStepsCount(): Int {
+        let totalJettonsSum = (self.quantityJettonsPerLevel * self.currentPrice / (self.jettonDecimals));
+        if (self.currentStep < self.trendChangeStep) { //смотрим, текущий шаг до или после смены тренда
+            // если до смены тренда, смотрим, сколько осталось шагов до смены
+            let stepsRemaining: Int = self.trendChangeStep - self.currentStep;
+            if (stepsRemaining > MAX_STEPS) { //если до смены осталось больше 50 шагов
+                //  то считаем максимальную границу по формуле
+                let q = (1 + self.priceIncrementMultiplier) * (1 + self.levelIncreaseMultiplier);
+                if (q > 1) {
+                    return totalJettonsSum * pow(q, stepsRemaining - 1) / (q - 1);
+                }
+                return totalJettonsSum * (1 - pow(q, stepsRemaining - 1)) / (1 - q);   
+            } else {
+                // если до смены осталось меньше 50 шагов, то считаем максимальную границу как сумму двух сумм, одну до смены тренда,
+                // и другой после смены на оставшееся до 50 шагов значение.
+                let qBeforeTrend = (1 + self.priceIncrementMultiplier) * (1 + self.levelIncreaseMultiplier);
+                let sumBeforeTrend = (qBeforeTrend > 1) 
+                    ? totalJettonsSum * pow(qBeforeTrend, stepsRemaining - 1) / (qBeforeTrend - 1)
+                    : totalJettonsSum * (1 - pow(qBeforeTrend, stepsRemaining - 1)) / (1 - qBeforeTrend);
+                let stepsAfterTrendChange = MAX_STEPS - stepsRemaining;
+                let qAfterTrend = (1 - self.priceIncrementMultiplier) * (1 - self.levelDecreaseMultiplierAfterTrend);
+                let sumAfterTrendChange = (qAfterTrend > 1) 
+                    ? totalJettonsSum * pow(qAfterTrend, stepsAfterTrendChange - 1) / (qAfterTrend - 1)
+                    : totalJettonsSum * (1 - pow(qAfterTrend, stepsAfterTrendChange - 1)) / (1 - qAfterTrend);
+                return sumBeforeTrend + sumAfterTrendChange;
+            }
+        } else {
+            // After trend change
+            let q = (1 - self.priceIncrementMultiplier) * (1 - self.levelDecreaseMultiplierAfterTrend);
+            let sumAfterTrendChange = (q > 1) 
+                ? totalJettonsSum * pow(q, MAX_STEPS - 1) / (q - 1)
+                : totalJettonsSum * (1 - pow(q, MAX_STEPS - 1)) / (1 - q);
+            return sumAfterTrendChange;
+        }
+    }
 
     // Returns the profit percentage depending on the current step and the trend change step.
     fun calculateProfit(currentStep: Int): Int {
@@ -1991,3 +2063,22 @@ contract ProofOfCapital with Deployable, Ownable {
     }
 
 }
+
+    // Sends the specified amount of jettons with a comment to the given address.
+    fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell, value: Int, forwardTonAmount: Int) {
+
+        let forwardPayload = beginCell().storeBit(false).storeSlice(payload.asSlice()).asSlice();
+        message(MessageParameters{
+            to: toAddress,
+            value: value,
+            body: JettonTransfer{
+                queryId: now(),
+                amount: amount,
+                destination: recipient,
+                responseDestination: recipient,
+                customPayload: null,
+                forwardTonAmount: forwardTonAmount,
+                forwardPayload: forwardPayload,
+            }.toCell(),
+        });
+    }   
