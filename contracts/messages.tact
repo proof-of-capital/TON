@@ -180,6 +180,7 @@ message GetContractInfoAfterUpdatePoc {
     jettonLaunchAddress: Address;
     isActive: Bool;
     currentPrice: Int as coins;
+    lockDate: Int as uint64;
 }
 
 // New messages for jetton transfers with specific payloads
