@@ -1106,6 +1106,22 @@ contract ProofOfCapital with Deployable, Ownable {
         self.notify(GetContractInfoAfterUpdatePoc{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, jettonCollateralAddress: self.jettonCollateralMasterAddress, jettonLaunchAddress: self.launchJettonMasterAddress, isActive: self.isActive, currentPrice: self.currentPrice, lockDate: self.lockEndTime }.toCell());
     }
 
+
+    receive(msg: FetchXPOKRequest) {
+        require(context().value >= self.commission, "Insufficient funds to cover commission for transfer XPOK info");
+        self.notify(FetchXPOKResponse{ 
+            isSenderMarketMaker:  self.marketMakerAddressesMap.exists(sender()), 
+            lockEndTime: self.lockEndTime,
+            launchDeferredWithdrawalDate: self.launchJettonDeferredWithdrawalDate,
+            collateralDeferredWithdrawDate: self.collateralJettonDeferredWithdrawalDate,
+            balance: myBalance(),   
+            capacityInCollateral: self.getMaxBuy(), 
+            fee: self.commission,
+            isTonCollateral: !self.jettonCollateral, 
+
+        }.toCell());
+    }
+
     // Calculates the number of full 30-day periods elapsed since controlDay.
     fun calculatePastPeriods(): Int {
         return (now() - self.controlDay) / THIRTY_DAYS;

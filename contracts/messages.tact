@@ -231,3 +231,16 @@ message CalculateUnaccountedOffsetJetton {
     queryId: Int as uint64;
     amount: Int as coins;
 }
+
+message(0x21) FetchXPOKRequest {}
+
+message(0x22) FetchXPOKResponse {
+    isSenderMarketMaker: Bool;
+    lockEndTime: Int as uint32;
+    launchDeferredWithdrawalDate: Int as uint32 = 0;
+    collateralDeferredWithdrawDate: Int as uint32 = 0; 
+    balance: Int as coins;
+    capacityInCollateral: Int as coins;
+    fee: Int as coins;
+    isTonCollateral: Bool;
+}
