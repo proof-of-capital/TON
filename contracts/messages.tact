@@ -244,3 +244,12 @@ message(0x22) FetchXPOKResponse {
     fee: Int as coins;
     isTonCollateral: Bool;
 }
+
+message(0x23) GetAccountInfoRequest {}
+
+message(0x24) GetAccountInfoResponse{
+    coinsBalance: Int as coins;
+    price: Int as coins;
+    step: Int as uint8;
+    maxOrderAmount: Int as coins;
+}

@@ -1122,6 +1122,16 @@ contract ProofOfCapital with Deployable, Ownable {
         }.toCell());
     }
 
+    receive(msg: GetAccountInfoRequest){
+        require(context().value >= self.commission, "Insufficient funds to cover commission for transfer account info");
+        self.notify(GetAccountInfoResponse{ 
+            coinsBalance: myBalance(), //?
+            price: self.currentPrice,
+            step: self.offsetStep, //?
+            maxOrderAmount: self.getMaxBuy(),
+        }.toCell());
+    }
+
     // Calculates the number of full 30-day periods elapsed since controlDay.
     fun calculatePastPeriods(): Int {
         return (now() - self.controlDay) / THIRTY_DAYS;
