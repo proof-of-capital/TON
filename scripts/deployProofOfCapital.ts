@@ -18,6 +18,7 @@ export async function run(provider: NetworkProvider) {
     const royaltyProfitPercent = 200n;
     const coefficientProfit = 200n;
     const jettonDecimals = toNano(1n);
+    const mmCommissionCount = 5n;
 
     console.log("-------")
     console.log(lockEndTime)
@@ -47,7 +48,8 @@ export async function run(provider: NetworkProvider) {
         address.jettonSupportMaster,
         royaltyProfitPercent,
         coefficientProfit,
-        jettonDecimals)
+        jettonDecimals, 
+        mmCommissionCount)
       );
       console.log(id)
       console.log(proofOfCapital.address.toString())

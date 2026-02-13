@@ -150,6 +150,8 @@ contract ProofOfCapital with Deployable, Ownable {
 
     isInitialized: Bool = false; // Flag indicating whether the contract's jetton wallets are initialized (required to run self.calculateOffset())
 
+    mmCommissionCount: Int as coins; // Market maker commission count
+
     init(id: Int,
         owner: Address,
         marketMakerAddress: Address,
@@ -170,8 +172,10 @@ contract ProofOfCapital with Deployable, Ownable {
         jettonCollateralMasterAddress: Address,
         royaltyProfitPercent: Int,
         profitBeforeTrendChange: Int,
-        jettonDecimals: Int
+        jettonDecimals: Int,
+        mmCommissionCount: Int
         ) {
+        self.mmCommissionCount = mmCommissionCount;    
         self.oldContractAddress = owner;
         self.oldContractAddressesMap = emptyMap();
         self.oldContractAddressesLength = 0;
@@ -690,7 +694,7 @@ contract ProofOfCapital with Deployable, Ownable {
                     self.unaccountedCollateralBalance += value;
                 }
             } else {
-                let value = context().value - (self.profitInTime ? 6 : 4) * self.commission;
+                let value = context().value - (self.profitInTime ? 6 + self.mmCommissionCount: 4) * self.commission;
                 require(self.getMaxBuy() > value, "Max steps");
                 require(self.isActive, "Contract is not active");
                 if (!self.checkTradingAccess()) {
@@ -702,7 +706,7 @@ contract ProofOfCapital with Deployable, Ownable {
 
                 let totalTokens: Int = self.calculateJettonsToGiveForCollateralAmount(value);
                 let creatorProfit: Int = self.actualProfit * self.creatorProfitPercent / MAX_PERCENT;
-                let mmProfit = 0;
+                let mmProfit = self.mmCommissionCount; // * self.commission?
                 if(self.lockEndTime > now()){
                     mmProfit = creatorProfit * self.marketMakerProfitPercent / MAX_PERCENT;
                     creatorProfit -= mmProfit;
