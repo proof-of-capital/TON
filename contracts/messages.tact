@@ -139,6 +139,7 @@ message GetNumberOfMarketMakers {
     queryId: Int as uint64;
     originalGasTo: Address;
     currentNumber: Int as uint8;
+    isSenderMarketMaker: Bool;
 }
 
 message(0x163572b9) PurchaseIsSuccess {

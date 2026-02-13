@@ -1097,7 +1097,8 @@ contract ProofOfCapital with Deployable, Ownable {
     // Sends the number of market makers.
     receive(msg: FetchNumberOfMarketMakers) {
         require(context().value >= self.commission, "Insufficient funds to cover commission for transfer number of market makers");
-        self.notify(GetNumberOfMarketMakers{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentNumber: self.marketMakerAddressesLength }.toCell());
+        let isSenderMarketMaker = self.marketMakerAddressesMap.exists(sender());
+        self.notify(GetNumberOfMarketMakers{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, currentNumber: self.marketMakerAddressesLength, isSenderMarketMaker: isSenderMarketMaker }.toCell());
     }
     // jetton collateral, launch token, active, current price
     receive(msg: FetchContractInfoAfterUpdatePoc) {
