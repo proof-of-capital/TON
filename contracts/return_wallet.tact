@@ -64,7 +64,7 @@ message(0xb) UpdateRoyaltyWalletOnPoc {
     pokAddress: Address;
 }
 
-message(0xc) BlockDeferredWithdrawalOnPoc {
+message(0xc) BlockMigrationOnPoc {
     pokAddress: Address;
     isForJetton: Bool; // true - for jetton, false - for collateral
 }
@@ -80,7 +80,7 @@ contract ReturnWallet with Deployable {
 
     collateralAllowedAddresses: map<Address, Bool>; // Map of collateral allowed addresses (k - address, v - is allowed)
     collateralWalletAddresses: map<Address, Address>; // Map of collateral jetton wallet addresses (k - master wallet, v - RW wallet address  )
-    
+
     pokActiveStatuses: map<Address, Bool>; // Map of pok addresses (k - pok address, v - is active)
     pokCollateralAddresses: map<Address, Address>; // Map of pok addresses (k - pok address, v - collateral jetton master address)
     pokSharePercentages: map<Address, Int as uint16>; // Map of pok addresses (k - pok address, v - share percentage)
@@ -123,7 +123,7 @@ contract ReturnWallet with Deployable {
                 value: COMMISSION,
                 mode: SendDefaultMode,
                 body: ProvideWalletAddress{query_id: now(), owner_address: myAddress(), include_address: false}.toCell()
-            });        
+            });
         }
         if(self.launchJettonWalletAddress == newAddress(0, 0)){
             message(MessageParameters{
@@ -131,7 +131,7 @@ contract ReturnWallet with Deployable {
                 value: COMMISSION,
                 mode: SendDefaultMode,
                 body: ProvideWalletAddress{query_id: now(), owner_address: myAddress(), include_address: false}.toCell()
-            });            
+            });
         }
     }
 
@@ -186,7 +186,7 @@ contract ReturnWallet with Deployable {
         require(sender() == self.marketMaker, "Access is only for the market maker");
         require(self.launchJettonBalance > 0 && msg.amount <=self.launchJettonBalance, "Not enought launch tokens balance");
         require(self.pokCount > 0, "No POC contracts added");
-        
+
         let totalFee = COMMISSION * 4 * self.pokCount;
         require(context().value >= totalFee + COMMISSION, "Insufficient funds to cover commission");
         let sendedAmount = 0;
@@ -243,7 +243,7 @@ contract ReturnWallet with Deployable {
         require(sender() == self.owner, "Access is only for the owner");
         require(self.newRoyaltyWalletAddress != newAddress(0, 0), "New royalty wallet address is not set");
         require(context().value >= COMMISSION, "Insufficient funds to cover commission");
-        
+
         // Send ChangeRoyaltyWallet to the specified POC contract
         reserveAtMost(context().value);
         message(MessageParameters{
@@ -254,7 +254,7 @@ contract ReturnWallet with Deployable {
         });
     }
 
-    receive(msg: BlockDeferredWithdrawalOnPoc){
+    receive(msg: BlockMigrationOnPoc){
         require(sender() == self.owner, "Access is only for the owner");
         require(context().value >= COMMISSION, "Insufficient funds to cover commission");
         reserveAtMost(context().value);
@@ -262,8 +262,8 @@ contract ReturnWallet with Deployable {
             to: msg.pokAddress,
             value: 0,
             mode: SendRemainingBalance | SendIgnoreErrors,
-            body: msg.isForJetton ? StopJettonDeferredWithdrawal{}.toCell() : StopCollateralDeferredWithdrawal{}.toCell()
-        });            
+            body: msg.isForJetton ? StopJettonMigration{}.toCell() : StopCollateralMigration{}.toCell()
+        });
     }
 
     receive(msg: WithdrawEarning) {

@@ -41,14 +41,6 @@ message ChangeReturnWallet {
     newReturnWalletAddress: Address;
 }
 
-message ProposeReturnWalletChange {
-    newReturnWalletAddress: Address;
-}
-
-message ConfirmReturnWalletChange {}
-
-message CancelReturnWalletChange {}
-
 message WithdrawAllTons {}
 
 message WithdrawAllCoins {}
@@ -74,10 +66,6 @@ message AssignNewReserveOwner {
     reserveOwner: Address;
 }
 
-message SwitchProfitMode {
-    flag: Bool;
-}
-
 message GetProfitOnRequest {}
 
 message ChangeRoyaltyWallet {
@@ -92,42 +80,22 @@ message DeleteMarketMakerAddresses {
     delMarketMakerAddresse: Address;
 }
 
-message ChangeProfitPercentage {
-    newRoyaltyProfitPercentage: Int as uint8;
-}
+message BlockMigration { }
 
-message ChangeMarketMakerProfitPercentage {
-    newMarketMakerProfitPercentage: Int as uint8;
-}
-
-message BlockDeferredWithdrawal { }
-
-message JettonDeferredWithdrawal {
+message JettonMigration {
     amount: Int as coins;
     recipientAddress: Address;
 }
 
-message CollateralDeferredWithdrawal {
+message CollateralMigration {
     recipientAddress: Address;
 }
 
-message StopJettonDeferredWithdrawal { }
-message StopCollateralDeferredWithdrawal { }
+message StopJettonMigration { }
+message StopCollateralMigration { }
 
-message ConfirmJettonDeferredWithdrawal { }
-message ConfirmCollateralDeferredWithdrawal { }
-
-message OldContractAddress {
-    oldContractAddress: Address;
-}
-
-message GetLockEndTime {
-    queryId: Int as uint64;
-    originalGasTo: Address;
-    lockEndTime: Int as uint32;
-    launchJettonDeferredWTHDate: Int as uint32;
-    collateralJettonDeferredWTHDate: Int as uint32;
-}
+message ConfirmJettonMigration { }
+message ConfirmCollateralMigration { }
 
 message GetCurrentPrice {
     queryId: Int as uint64;
@@ -135,27 +103,10 @@ message GetCurrentPrice {
     currentPrice: Int as coins;
 }
 
-message GetNumberOfMarketMakers {
-    queryId: Int as uint64;
-    originalGasTo: Address;
-    currentNumber: Int as uint8;
-}
-
 message(0x163572b9) PurchaseIsSuccess {
 } 
 
-
-message FetchLockEndTime {
-    queryId: Int as uint64;
-    originalGasTo: Address;
-}
-
 message FetchCurrentPrice {
-    queryId: Int as uint64;
-    originalGasTo: Address;
-}
-
-message FetchNumberOfMarketMakers {
     queryId: Int as uint64;
     originalGasTo: Address;
 }
@@ -184,9 +135,9 @@ message GetContractInfoAfterUpdatePoc {
 }
 
 // New messages for jetton transfers with specific payloads
-message LaunchJettonDeferredWithdrawal {}
+message LaunchJettonMigration {}
 
-message CollateralJettonDeferredWithdrawal {}
+message CollateralJettonMigration {}
 
 message SendOtherJettonsToDao {}
 
@@ -209,24 +160,3 @@ message CollateralBuyback {}
 message TransferAllLaunchJettonsToOwner {}
 
 message SendAllCollateralBalanceToOwner {}
-
-message UpgradeOwnerShare {}
-
-message UpgradeOwnerShareToDao {
-    amount: Int as coins;
-}
-
-message CalculateUnaccountedCollateralBalance {
-    queryId: Int as uint64;
-    amount: Int as coins;
-}
-
-message CalculateUnaccountedOffsetBalance {
-    queryId: Int as uint64;
-    amount: Int as coins;
-}
-
-message CalculateUnaccountedOffsetJetton {
-    queryId: Int as uint64;
-    amount: Int as coins;
-}
