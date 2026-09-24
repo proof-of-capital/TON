@@ -43,7 +43,7 @@ const MAX_PERCENT: Int = 1000; // Maximum percentage value
 const FIXED_ROYALTY_PROFIT_PERCENT: Int = 200; // Fixed 20% royalty share
 
 // Limits the given period to a range between MIN_CONTROL_PERIOD and THIRTY_DAYS.
-fun getPeriod(period: Int): Int {
+inline fun getPeriod(period: Int): Int {
     if (period < MIN_CONTROL_PERIOD) {
         period = MIN_CONTROL_PERIOD;
     } else if (period > THIRTY_DAYS) {
@@ -81,7 +81,6 @@ contract ProofOfCapital with Deployable, Ownable {
     contractCollateralBalance: Int as coins; // Balance of collateral jettons
     contractJettonBalance: Int as coins; // Balance of the contract's launch jetton
     jettonsEarned: Int as coins; // Number of earned jettons — these are the jettons returned to the contract from the returnWalletAddress
-
     quantityJettonsPerLevel: Int as coins; // Number of jettons at the current level
     actualProfit: Int as coins; // Actual profit to be distributed between the owner and the royalty wallet
     currentPrice: Int as coins; // Current price of the jetton
@@ -251,6 +250,7 @@ contract ProofOfCapital with Deployable, Ownable {
             to: self.launchJettonMasterAddress,
             value: 0,
             mode: SendRemainingValue,
+            bounce: false,
             body: ProvideWalletAddress{query_id: now(), owner_address: myAddress(), include_address: false}.toCell()
         });
     }
@@ -262,20 +262,18 @@ contract ProofOfCapital with Deployable, Ownable {
         // TODO: store the LP wallet address in addition to the launch and collateral wallets.
     }
 
-    // Extends the lock for a specified period at the request of the owner. Supported durations are 10 minutes, 3 months, or 6 months.
+    // Extends the lock to a specific timestamp at the request of the owner.
     receive(msg: ExtendLock) {
         require(sender() == self.owner, "Access is only for the owner");
         require(context().value >= self.commission, "Amount must be greater than commission");
-        require(((self.lockEndTime + msg.additionalTime) - now()) < ONE_THOUSAND_EIGHT_HUNDRED_TWENTY_FIVE_DAYS, "Lock end time cannot exceed five years");
-        require(msg.additionalTime == ONE_HUNDRED_EIGHTY_TWO_DAYS || msg.additionalTime == TEN_MINUTES || msg.additionalTime == NINETY_DAYS, "Invalid time!");
-        self.lockEndTime += msg.additionalTime;
-        if (msg.additionalTime == ONE_HUNDRED_EIGHTY_TWO_DAYS) {
-            self.notify("Lock extended for 182 days.".asComment());
-        } else if (msg.additionalTime == TEN_MINUTES) {
-            self.notify("Lock extended for 10 minutes.".asComment());
-        } else {
-            self.notify("Lock extended for 3 months.".asComment());
-        }
+        require(msg.lockTimestamp > now(), "Invalid time period");
+        require(msg.lockTimestamp > self.lockEndTime, "New lock must be greater than old");
+        require(msg.lockTimestamp <= now() + ONE_THOUSAND_EIGHT_HUNDRED_TWENTY_FIVE_DAYS, "Lock cannot exceed five years");
+        self.lockEndTime = msg.lockTimestamp;
+        let notification: StringBuilder = beginString();
+        notification.append("Lock extended until ");
+        notification.append(msg.lockTimestamp.toString());
+        self.notify(notification.toString().asComment());
     }
 
     // Locks the ability of the owner to withdraw funds if they want to waive this right during the lock period.
@@ -468,7 +466,7 @@ contract ProofOfCapital with Deployable, Ownable {
     // jetton collateral, launch token, active, current price
     receive(msg: FetchContractInfoAfterUpdatePoc) {
         require(context().value >= self.commission, "Insufficient funds to cover commission for transfer jetton collateral");
-        self.notify(GetContractInfoAfterUpdatePoc{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, jettonCollateralAddress: self.jettonCollateralMasterAddress, jettonLaunchAddress: self.launchJettonMasterAddress, isActive: self.isActive, currentPrice: self.currentPrice }.toCell());
+        self.notify(GetContractInfoAfterUpdatePoc{ queryId: msg.queryId, originalGasTo: msg.originalGasTo, jettonCollateralAddress: self.jettonCollateralMasterAddress, jettonLaunchAddress: self.launchJettonMasterAddress, isActive: self.isActive, currentPrice: self.currentPrice, lockDate: self.lockEndTime }.toCell());
     }
 
     // Helper function to check if the caller is allowed to trade at the current moment.
@@ -478,7 +476,6 @@ contract ProofOfCapital with Deployable, Ownable {
 
     // Sends the specified amount of jettons with a comment to the given address.
     fun transferTokensToWithPayload(toAddress: Address, recipient: Address, amount: Int, payload: Cell, value: Int, forwardTonAmount: Int) {
-
         let forwardPayload = beginCell().storeBit(false).storeSlice(payload.asSlice()).asSlice();
         message(MessageParameters{
             to: toAddress,
@@ -493,7 +490,7 @@ contract ProofOfCapital with Deployable, Ownable {
                 forwardPayload: forwardPayload,
             }.toCell(),
         });
-    }   
+    }
 
     // Returns the profit percentage depending on the current step and the trend change step.
     fun calculateProfit(currentStep: Int): Int {

@@ -10,7 +10,7 @@ message(0xd1735400) TakeWalletAddress {
 }
 
 message ExtendLock {
-    additionalTime: Int as uint32;
+    lockTimestamp: Int as uint64;
 }
 
 message(0x7362d09c) JettonTransferNotification {
@@ -131,6 +131,7 @@ message GetContractInfoAfterUpdatePoc {
     jettonLaunchAddress: Address;
     isActive: Bool;
     currentPrice: Int as coins;
+    lockDate: Int as uint64;
 }
 
 // New messages for jetton transfers with specific payloads
